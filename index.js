@@ -204,59 +204,79 @@ client.on('messageCreate', message => {
 // ---------------------------------------------------------
 // 2. LISTENING FOR BUTTON CLICKS & FORMS
 // ---------------------------------------------------------
+// ---------------------------------------------------------
+// 2. LISTENING FOR INTERACTIONS
+// ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
-    // --- 1. HANDLE ALL BUTTON CLICKS ---
+    // --- A. BUTTON HANDLER ---
     if (interaction.isButton()) {
-        // First, check the Coward's Button (Drop Out)
         if (interaction.customId === 'dropout_btn') {
             const userId = interaction.user.id;
-            const userSignups = db.prepare('SELECT character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
+            const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
 
             if (userSignups.length === 0) return interaction.reply({ content: "You aren't on the list, Puffin!", ephemeral: true });
 
-            // If they only have one signup, and it's not a 'BOTH' signup, we can drop them instantly
-            if (userSignups.length === 1 && !userSignups[0].boss_choice.includes('BOTH')) {
-                db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(userId);
-                await interaction.reply({ content: `🏃💨 **${userSignups[0].character_name}** has dropped out. Cowardice noted!` });
-                return displayRoster(interaction.channel);
-            }
+            // Create a sleek Dropdown Menu
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('dropout_select')
+                .setPlaceholder('Select which commitment to abandon...');
 
-            // If they have multiples or a BOTH signup, they need to use the chat command for safety
-            return interaction.reply({ 
-                content: "You have multiple characters or a 'BOTH' signup. To ensure I don't remove the wrong thing, please use: `!dropout [Name] [Boss]` in chat!", 
-                ephemeral: true 
+            userSignups.forEach(s => {
+                if (s.boss_choice.includes('BOTH')) {
+                    selectMenu.addOptions(
+                        { label: `${s.character_name} (Drop LLK Only)`, value: `drop_part_LLK_${s.id}` },
+                        { label: `${s.character_name} (Drop HoD Only)`, value: `drop_part_HOD_${s.id}` },
+                        { label: `${s.character_name} (Drop Both Entirely)`, value: `drop_full_BOTH_${s.id}` }
+                    );
+                } else {
+                    const boss = s.boss_choice.replace('PUBLIC_', '');
+                    selectMenu.addOptions({ label: `${s.character_name} (${boss})`, value: `drop_full_${boss}_${s.id}` });
+                }
             });
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            return interaction.reply({ content: "Cowardice noted. Choose your exit:", components: [row], ephemeral: true });
         }
 
-        // Otherwise, it's a signup button (LLK, HoD, etc.)
+        // Standard Sign-up Button logic
         if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
-
-        const modal = new ModalBuilder()
-            .setCustomId(`modal_${interaction.customId}`)
-            .setTitle('Mecha-Puffin Registration');
-
-        const charNameInput = new TextInputBuilder()
-            .setCustomId('charName')
-            .setLabel("Exact character name?")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        const queenMessageInput = new TextInputBuilder()
-            .setCustomId('queenMessage')
-            .setLabel("Message for the Queen?")
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(false);
-        
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(charNameInput), 
-            new ActionRowBuilder().addComponents(queenMessageInput)
-        );
-
+        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('Mecha-Puffin Registration');
+        const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Exact character name?").setStyle(TextInputStyle.Short).setRequired(true);
+        const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Message for the Queen?").setStyle(TextInputStyle.Paragraph).setRequired(false);
+        modal.addComponents(new ActionRowBuilder().addComponents(nameInput), new ActionRowBuilder().addComponents(msgInput));
         await interaction.showModal(modal);
     }
 
-    // --- 2. HANDLE MODAL SUBMISSIONS (The Sign-up Form) ---
+    // --- B. DROPDOWN PROCESSOR (The New Brain) ---
+    if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
+        const parts = interaction.values[0].split('_'); 
+        const action = parts[1]; // 'part' or 'full'
+        const type = parts[2];   // 'LLK', 'HOD', or 'BOTH'
+        const signupId = parts[3];
+
+        const signup = db.prepare('SELECT * FROM signups WHERE id = ?').get(signupId);
+        if (!signup) return interaction.update({ content: "Error: Record not found.", components: [] });
+
+        let finalMsg = "";
+
+        if (action === 'part') {
+            // Downgrade "BOTH" to just the remaining boss
+            const newChoice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${type === 'LLK' ? 'HOD' : 'LLK'}` : (type === 'LLK' ? 'HOD' : 'LLK');
+            db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signupId);
+            finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${type} but is still in for the other!`;
+        } else {
+            // Full deletion
+            db.prepare('DELETE FROM signups WHERE id = ?').run(signupId);
+            finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** has fled the raid entirely!`;
+        }
+
+        await interaction.update({ content: "Retreat processed. You are now dismissed.", components: [] });
+        interaction.channel.send(finalMsg);
+        displayRoster(interaction.channel);
+    }
+
+    // --- C. MODAL SUBMISSION (Sign-up Processor) ---
     if (interaction.isModalSubmit()) {
         const rawName = interaction.fields.getTextInputValue('charName');
         const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
@@ -272,19 +292,15 @@ client.on('interactionCreate', async interaction => {
 
             const char = data.character.character;
             const charName = char.name; 
-            const rawVocation = char.vocation.toUpperCase();
             const charLevel = char.level;
+            const rawVocation = char.vocation.toUpperCase();
             const guildName = char.guild?.name || null;
 
             if (rawVocation === 'NONE') return interaction.editReply(`❌ Rookgaardian detected.`);
 
-            // 🛡️ FAILSAFE: Check if character is already signed up
             const existing = db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
-            if (existing) {
-                return interaction.editReply(`❌ **Error:** **${charName}** is already on the roster! Double-signing is forbidden.`);
-            }
+            if (existing) return interaction.editReply(`❌ **Error:** **${charName}** is already on the roster!`);
 
-            // 🏷️ GATEKEEPER LOGIC
             const manualWhitelist = db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             const isPuffin = (guildName === "Puffin Dragons") || manualWhitelist;
             
@@ -295,7 +311,6 @@ client.on('interactionCreate', async interaction => {
                 note = `\n*(Note: You are in the public queue for 48h)*`;
             }
 
-            // 🎨 VOCATION MAPPING
             let vocAbbr = rawVocation; let vocEmoji = '❓';
             if (rawVocation.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVocation.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
@@ -304,28 +319,18 @@ client.on('interactionCreate', async interaction => {
             else if (rawVocation.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
             const formattedVoc = `${vocEmoji} ${vocAbbr}`;
 
-            // 💾 SINGLE SAVE TO DATABASE
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
 
-            // 📣 COMPOSE REPLY
-            let replyText = "";
-            if (rawVocation.includes('MONK')) {
-                replyText = `${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}>, **${charName}** added!${note}`;
-            } else {
-                replyText = `✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
-            }
-
+            let replyText = rawVocation.includes('MONK') ? `${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}>, **${charName}** added!${note}` : `✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
             if (queenMessage.trim() !== "") replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
 
             await interaction.editReply({ content: replyText });
-            
-            // 📜 UPDATE ROSTER
             await displayRoster(interaction.channel);
 
         } catch (error) {
-            console.error("Signup Error:", error);
-            await interaction.editReply("⚠️ The Mecha-Puffin encountered an error reaching Tibia servers.");
+            console.error(error);
+            await interaction.editReply("⚠️ The Mecha-Puffin encountered an API error.");
         }
     }
 });
