@@ -119,3 +119,4 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply(`✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`);
     }
 });
+client.login(process.env.DISCORD_TOKEN);
