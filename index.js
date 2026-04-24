@@ -83,45 +83,46 @@ client.on('messageCreate', message => {
     }
     // Command to view the roster
     if (message.content === '!roster') {
-        // Grab the data, now explicitly asking for the 'level' column
-        const signups = db.prepare('SELECT character_name, vocation, level, boss_choice FROM signups ORDER BY id ASC').all();
+        const allSignups = db.prepare('SELECT * FROM signups ORDER BY id ASC').all();
+        const manualWhitelist = db.prepare('SELECT char_name FROM whitelist').all().map(w => w.char_name.toLowerCase());
 
-        if (signups.length === 0) {
-            return message.reply("📭 **The roster is empty!** No one has braved the gates yet.");
-        }
+        if (allSignups.length === 0) return message.reply("📭 **The roster is empty!**");
 
-        const rosterEmbed = {
-            title: "📜 Official Raid Roster",
-            description: "The Queen's chosen warriors:",
-            color: 0x0099ff,
-            fields: []
+        const rosterEmbed = { title: "📜 Official Raid Roster", color: 0x0099ff, fields: [] };
+        const maxPlayers = 15;
+
+        // Helper to sort: Whitelist/Guild members first, then others
+        const getSortedTeam = (bossKey) => {
+            return allSignups.filter(p => {
+                const choice = p.boss_choice;
+                // Match the boss OR the 'BOTH' option for LLK/HOD
+                const isMatch = choice.includes(bossKey) || (choice.includes('BOTH') && (bossKey === 'LLK' || bossKey === 'HOD'));
+                return isMatch;
+            }).sort((a, b) => {
+                // Priority 1: Is the choice marked as 'PUBLIC'? (Those go last)
+                const aPublic = a.boss_choice.startsWith('PUBLIC_');
+                const bPublic = b.boss_choice.startsWith('PUBLIC_');
+                if (aPublic !== bPublic) return aPublic ? 1 : -1;
+                return a.id - b.id; // Otherwise, first-come first-served
+            });
         };
 
-        const maxPlayers = 15; 
-
-        const llkPlayers = signups.filter(p => p.boss_choice === 'LLK' || p.boss_choice === 'BOTH');
-        const hodPlayers = signups.filter(p => p.boss_choice === 'HOD' || p.boss_choice === 'BOTH');
-        const feruPlayers = signups.filter(p => p.boss_choice === 'FERU');
-
-        const addTeamToEmbed = (teamName, teamEmoji, players) => {
+        const addSection = (name, emoji, key) => {
+            const players = getSortedTeam(key);
             if (players.length > 0) {
-                const mainTeam = players.slice(0, maxPlayers);
-                const reserves = players.slice(maxPlayers);
-
-                // Formats as: • CharacterName [Lvl 500] (🛡️ EK)
-                const mainList = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
-                rosterEmbed.fields.push({ name: `${teamEmoji} ${teamName} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainList, inline: false });
-
-                if (reserves.length > 0) {
-                    const reserveList = reserves.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
-                    rosterEmbed.fields.push({ name: `⏳ ${teamName} RESERVES (${reserves.length})`, value: reserveList, inline: false });
+                const main = players.slice(0, maxPlayers).map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${Math.min(players.length, maxPlayers)}/${maxPlayers})`, value: main, inline: false });
+                
+                if (players.length > maxPlayers) {
+                    const res = players.slice(maxPlayers).map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                    rosterEmbed.fields.push({ name: `⏳ ${name} RESERVES (${players.length - maxPlayers})`, value: res, inline: false });
                 }
             }
         };
 
-        addTeamToEmbed('LLK', '⚔️', llkPlayers);
-        addTeamToEmbed('HoD', '🛡️', hodPlayers);
-        addTeamToEmbed('FERUMBRAS', '🧙‍♂️', feruPlayers);
+        addSection('LLK', '⚔️', 'LLK');
+        addSection('HoD', '🛡️', 'HOD');
+        addSection('FERUMBRAS', '🧙‍♂️', 'FERU');
 
         message.channel.send({ embeds: [rosterEmbed] });
     }
@@ -171,75 +172,63 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply(); 
 
         try {
-            // 🌐 CALLING THE TIBIA SERVERS
             const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await response.json();
 
             if (!data.character || !data.character.character || data.character.character.name === "") {
-                return interaction.editReply(`❌ **Access Denied:** The character **${rawName}** does not exist. The Gatekeeper refuses you!`);
+                return interaction.editReply(`❌ **Access Denied:** Character **${rawName}** not found.`);
             }
 
-            const charName = data.character.character.name; 
-            const rawVocation = data.character.character.vocation.toUpperCase();
-            const charLevel = data.character.character.level; // 📈 NEW: Grab the level!
+            const char = data.character.character;
+            const charName = char.name; 
+            const rawVocation = char.vocation.toUpperCase();
+            const charLevel = char.level;
+            const guildName = char.guild ? char.guild.name : null;
 
-            if (rawVocation === 'NONE') {
-                return interaction.editReply(`❌ **Access Denied:** **${charName}** is still on Rookgaard! The Mecha-Puffin only accepts mainlanders.`);
-            }
+            if (rawVocation === 'NONE') return interaction.editReply(`❌ **Access Denied:** Rookgaardian detected.`);
 
-            // 🎨 NEW: The Vocation Emoji Mapper
-            let vocAbbr = rawVocation;
-            let vocEmoji = '❓';
+            // 🏷️ THE GATEKEEPER LOGIC
+            const manualWhitelist = db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             
+            // ADJUST THIS: Change 'Puffins' to your exact Guild Name on Tibia
+            const isPuffin = (guildName === "Puffin Dragons") || manualWhitelist;
+            
+            let finalChoice = bossChoice;
+            let note = "";
+
+            // If not a guildie/whitelisted, mark as PUBLIC (unless they chose Reserve Only)
+            if (!isPuffin && bossChoice !== 'RESERVE') {
+                finalChoice = `PUBLIC_${bossChoice}`;
+                note = `\n*(Note: You are in the public queue behind guild members for the first 48h)*`;
+            }
+
+            // Vocation mapping
+            let vocAbbr = rawVocation; let vocEmoji = '❓';
             if (rawVocation.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVocation.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
             else if (rawVocation.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
             else if (rawVocation.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
             else if (rawVocation.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
+            const formattedVoc = `${vocEmoji} ${vocAbbr}`;
 
-            const formattedVoc = `${vocEmoji} ${vocAbbr}`; // Example: "🛡️ EK"
-
-            // 💾 SAVE TO SQLITE DATABASE (Now with LEVEL!)
-            const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)');
-            stmt.run(interaction.user.id, charName, formattedVoc, charLevel, bossChoice, queenMessage);
-
-            let replyText = "";
-            
-            if (rawVocation.includes('MONK')) {
-                const roast = messages.getRandom(messages.monkRoasts);
-                replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) [Signed up for: ${bossChoice}]`;
-            } else {
-                const hype = messages.getRandom(messages.standardHype);
-                replyText = `✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${hype} [Signed up for: ${bossChoice}]`;
-            }
-
-            if (queenMessage.trim() !== "") {
-                replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
-            }
-
-            await interaction.editReply({ content: replyText });
-
-            // 🏷️ CHECK WHITELIST STATUS
-            const isWhitelisted = db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
-            
-            // ⏰ TIME CHECK: Find when the !open message was sent (simplified for now)
-            // If not whitelisted and button isn't "reserve", we tag them as 'PUBLIC'
-            let finalChoice = bossChoice;
-            if (!isWhitelisted && bossChoice !== 'RESERVE') {
-                // For now, we'll mark them as PUBLIC so the roster can sort them later
-                finalChoice = `PUBLIC_${bossChoice}`;
-            }
-
-            // 💾 SAVE TO DATABASE
+            // 💾 THE SINGLE SAVE STATEMENT
             const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)');
             stmt.run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
 
-            let replyText = `✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) has been logged!`;
-            if (!isWhitelisted) replyText += `\n*(Note: Non-whitelisted players are queued behind Puffins for the first 48h)*`;
+            let replyText = "";
+            if (rawVocation.includes('MONK')) {
+                replyText = `${messages.getRandom(messages.monkRoasts)}\n✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) added to list!${note}`;
+            } else {
+                replyText = `✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
+            }
+
+            if (queenMessage.trim() !== "") replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
+
+            await interaction.editReply({ content: replyText });
 
         } catch (error) {
-            console.error("API Error:", error);
-            await interaction.editReply("⚠️ **System Failure:** The Mecha-Puffin couldn't reach the Tibia servers.");
+            console.error(error);
+            await interaction.editReply("⚠️ **System Failure:** API issues.");
         }
     }
 }); // <--- This was the culprit! The missing closing brackets.
