@@ -2,27 +2,31 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 
-// Ensure the data folder exists for Railway's volume
 if (!fs.existsSync('./data')) {
     fs.mkdirSync('./data');
 }
 
-// Create or connect to the database file
 const db = new Database('./data/puffin.db');
 
-// Create our sign-up table if it doesn't already exist
 db.prepare(`
     CREATE TABLE IF NOT EXISTS signups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         discord_user_id TEXT,
         character_name TEXT,
         vocation TEXT,
-        level INTEGER,
         boss_choice TEXT,
         status TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )
 `).run();
+
+// Safely try to add the new column if it doesn't already exist
+try {
+    db.prepare('ALTER TABLE signups ADD COLUMN message_to_queen TEXT').run();
+    console.log("💾 Database upgraded: Added 'message_to_queen' column.");
+} catch (err) {
+    // If it throws an error, it just means the column already exists! 
+}
 
 console.log("💾 Mecha-Puffin Memory Banks: ONLINE");
 
