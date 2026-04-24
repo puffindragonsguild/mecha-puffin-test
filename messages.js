@@ -41,9 +41,7 @@ module.exports = {
         "My sword is yours, but my words are expensive.",
         "I forgot my speech at home.",
         "Hail to the Queen, I guess."
-    ]
-};
-
+    ],
     // A handy function to pick a random message from the lists above
     getRandom: function(array) {
         return array[Math.floor(Math.random() * array.length)];
