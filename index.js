@@ -85,10 +85,29 @@ client.on('messageCreate', message => {
     if (message.content === '!roster') displayRoster(message.channel);
 
     if (message.content === '!dropout') {
-        const userSignups = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all();
-        if (userSignups.length === 0) return message.reply("You aren't on the list!");
-        db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(message.author.id);
-        message.channel.send(`🏃💨 **THE COWARD'S EXIT:** **${userSignups.map(s => s.character_name).join(', ')}** has dropped out.`);
+        const userId = message.author.id;
+        console.log(`[DEBUG] Dropout attempt by Discord ID: ${userId}`);
+
+        // 1. Check if the user exists in the database
+        const userSignups = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all(userId);
+        
+        if (userSignups.length === 0) {
+            console.log(`[DEBUG] No signups found for ID: ${userId}`);
+            return message.reply("You aren't on the list, Puffin! You can't abandon a raid you haven't joined.");
+        }
+
+        // 2. Perform the deletion
+        const info = db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(userId);
+        
+        if (info.changes > 0) {
+            const names = userSignups.map(s => s.character_name).join(', ');
+            message.channel.send(`🏃💨 **THE COWARD'S EXIT:** **${names}** has dropped out of the raid. The queue has moved up!`);
+            
+            // Refresh the roster so everyone sees the new line-up
+            displayRoster(message.channel);
+        } else {
+            message.reply("Something went wrong with the database. The Mecha-Puffin refuses to let you go!");
+        }
     }
 
     if (message.content === '!open dt') {
