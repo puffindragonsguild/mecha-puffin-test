@@ -27,6 +27,11 @@ try {
 } catch (err) {
     // If it throws an error, it just means the column already exists! 
 }
+// Safely try to add the level column if it doesn't already exist
+try {
+    db.prepare('ALTER TABLE signups ADD COLUMN level INTEGER').run();
+    console.log("💾 Database upgraded: Added 'level' column.");
+} catch (err) {}
 
 console.log("💾 Mecha-Puffin Memory Banks: ONLINE");
 
