@@ -51,46 +51,50 @@ client.on('messageCreate', message => {
         const row = new ActionRowBuilder().addComponents(feruBtn);
         message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨\nThe Gates are OPEN! Click below to sign up.', components: [row] });
     }
+    // Command to wipe the database for a new week
+    if (message.content === '!clear') {
+        // Delete all rows in the table
+        db.prepare('DELETE FROM signups').run();
+        message.reply('🧹 **The roster has been wiped clean!** The Mecha-Puffin is ready for a new week.');
+    }
     // Command to view the roster
     if (message.content === '!roster') {
-        // 1. Fetch ALL sign-ups from the database
         const signups = db.prepare('SELECT character_name, vocation, boss_choice FROM signups').all();
 
-        // 2. Check if the database is empty
         if (signups.length === 0) {
             return message.reply("📭 **The roster is empty!** No one has braved the gates yet.");
         }
 
-        // 3. Build a sleek Discord Embed
         const rosterEmbed = {
             title: "📜 Official Raid Roster",
             description: "The Queen's chosen warriors:",
-            color: 0x0099ff, // A nice Puffin-blue color
-            fields: [],
-            footer: { text: `Total Puffins ready for battle: ${signups.length}` }
+            color: 0x0099ff,
+            fields: []
         };
 
-        // 4. Group the players by which boss they selected
-        const bosses = ['LLK', 'HOD', 'BOTH', 'FERU'];
-        
-        bosses.forEach(boss => {
-            // Filter the database results for this specific boss
-            const players = signups.filter(p => p.boss_choice === boss);
-            
-            if (players.length > 0) {
-                // Format their names into a nice bulleted list
-                const playerList = players.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
-                
-                // Add this group to the Embed box
-                rosterEmbed.fields.push({
-                    name: `🚨 ${boss} TEAM`,
-                    value: playerList,
-                    inline: false // Keeps each boss on its own row
-                });
-            }
-        });
+        // 1. Filter players into their specific teams (handling 'BOTH' smartly)
+        const llkPlayers = signups.filter(p => p.boss_choice === 'LLK' || p.boss_choice === 'BOTH');
+        const hodPlayers = signups.filter(p => p.boss_choice === 'HOD' || p.boss_choice === 'BOTH');
+        const feruPlayers = signups.filter(p => p.boss_choice === 'FERU');
 
-        // 5. Send the masterpiece to the channel
+        // 2. Build the LLK Field if it has players
+        if (llkPlayers.length > 0) {
+            const list = llkPlayers.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+            rosterEmbed.fields.push({ name: `⚔️ LLK TEAM (${llkPlayers.length})`, value: list, inline: false });
+        }
+
+        // 3. Build the HoD Field if it has players
+        if (hodPlayers.length > 0) {
+            const list = hodPlayers.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+            rosterEmbed.fields.push({ name: `🛡️ HoD TEAM (${hodPlayers.length})`, value: list, inline: false });
+        }
+
+        // 4. Build the Feru Field if it has players
+        if (feruPlayers.length > 0) {
+            const list = feruPlayers.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+            rosterEmbed.fields.push({ name: `🧙‍♂️ FERUMBRAS TEAM (${feruPlayers.length})`, value: list, inline: false });
+        }
+
         message.channel.send({ embeds: [rosterEmbed] });
     }
 });
