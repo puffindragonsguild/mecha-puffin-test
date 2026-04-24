@@ -84,38 +84,51 @@ client.on('messageCreate', message => {
     // Command to view the roster
     if (message.content === '!roster') {
         const allSignups = db.prepare('SELECT * FROM signups ORDER BY id ASC').all();
-        const manualWhitelist = db.prepare('SELECT char_name FROM whitelist').all().map(w => w.char_name.toLowerCase());
-
         if (allSignups.length === 0) return message.reply("📭 **The roster is empty!**");
 
         const rosterEmbed = { title: "📜 Official Raid Roster", color: 0x0099ff, fields: [] };
         const maxPlayers = 15;
 
-        // Helper to sort: Whitelist/Guild members first, then others
-        const getSortedTeam = (bossKey) => {
-            return allSignups.filter(p => {
-                const choice = p.boss_choice;
-                // Match the boss OR the 'BOTH' option for LLK/HOD
-                const isMatch = choice.includes(bossKey) || (choice.includes('BOTH') && (bossKey === 'LLK' || bossKey === 'HOD'));
-                return isMatch;
-            }).sort((a, b) => {
-                // Priority 1: Is the choice marked as 'PUBLIC'? (Those go last)
-                const aPublic = a.boss_choice.startsWith('PUBLIC_');
-                const bPublic = b.boss_choice.startsWith('PUBLIC_');
-                if (aPublic !== bPublic) return aPublic ? 1 : -1;
-                return a.id - b.id; // Otherwise, first-come first-served
-            });
-        };
+        // ⏱️ CALCULATE 48-HOUR WINDOW
+        // We check against the very first person who signed up for this batch
+        const firstSignupTime = new Date(allSignups[0].created_at).getTime();
+        const fortyEightHours = 48 * 60 * 60 * 1000;
+        const windowExpired = (Date.now() - firstSignupTime) > fortyEightHours;
 
         const addSection = (name, emoji, key) => {
-            const players = getSortedTeam(key);
+            const players = allSignups.filter(p => 
+                p.boss_choice.includes(key) || (p.boss_choice.includes('BOTH') && (key === 'LLK' || key === 'HOD'))
+            );
+
             if (players.length > 0) {
-                const main = players.slice(0, maxPlayers).map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
-                rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${Math.min(players.length, maxPlayers)}/${maxPlayers})`, value: main, inline: false });
-                
-                if (players.length > maxPlayers) {
-                    const res = players.slice(maxPlayers).map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
-                    rosterEmbed.fields.push({ name: `⏳ ${name} RESERVES (${players.length - maxPlayers})`, value: res, inline: false });
+                // If window expired, everyone is treated the same. 
+                // If not, we separate Public from Puffin.
+                let mainList = [];
+                let publicQueue = [];
+
+                if (windowExpired) {
+                    mainList = players;
+                } else {
+                    mainList = players.filter(p => !p.boss_choice.startsWith('PUBLIC_'));
+                    publicQueue = players.filter(p => p.boss_choice.startsWith('PUBLIC_'));
+                }
+
+                // 1. Main Team & Reserves
+                const mainTeam = mainList.slice(0, maxPlayers);
+                const mainReserves = mainList.slice(maxPlayers);
+
+                const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
+
+                if (mainReserves.length > 0) {
+                    const resText = mainReserves.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                    rosterEmbed.fields.push({ name: `⏳ ${name} PUFFIN RESERVES`, value: resText, inline: false });
+                }
+
+                // 2. Separate Public Queue (Only if window hasn't expired)
+                if (publicQueue.length > 0 && !windowExpired) {
+                    const publicText = publicQueue.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                    rosterEmbed.fields.push({ name: `📢 ${name} PUBLIC QUEUE (Waitlisted)`, value: publicText, inline: false });
                 }
             }
         };
@@ -123,6 +136,12 @@ client.on('messageCreate', message => {
         addSection('LLK', '⚔️', 'LLK');
         addSection('HoD', '🛡️', 'HOD');
         addSection('FERUMBRAS', '🧙‍♂️', 'FERU');
+
+        // Add a footer showing when the public queue opens up
+        const timeLeft = Math.max(0, (fortyEightHours - (Date.now() - firstSignupTime)) / (1000 * 60 * 60));
+        rosterEmbed.footer = { 
+            text: windowExpired ? "✅ Public queue is now merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)} hours.` 
+        };
 
         message.channel.send({ embeds: [rosterEmbed] });
     }
