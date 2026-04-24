@@ -116,88 +116,67 @@ client.on('interactionCreate', async interaction => {
     
     // --- IF SOMEONE CLICKS A BUTTON ---
     if (interaction.isButton()) {
-        // Check if the gates are closed first!
         if (!gatesOpen) {
-            // "ephemeral: true" means ONLY the person who clicked sees this message
             return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
         }
 
-        // Build the Popup Form (Modal)
         const modal = new ModalBuilder()
-            .setCustomId(`modal_${interaction.customId}`) // We pass the button ID (e.g., signup_llk) into the modal ID
+            .setCustomId(`modal_${interaction.customId}`) 
             .setTitle('Mecha-Puffin Registration');
 
-        // Create the Text Input for Character Name
         const charNameInput = new TextInputBuilder()
             .setCustomId('charName')
             .setLabel("What is your character's name?")
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
-        // Create the Text Input for Vocation
         const vocInput = new TextInputBuilder()
             .setCustomId('vocation')
             .setLabel("What is your vocation? (EK, ED, MS, RP)")
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
-        // NEW: Create the Text Input for the Message
+        // The Text Input for the Message
         const queenMessageInput = new TextInputBuilder()
             .setCustomId('queenMessage')
             .setLabel("Message for the Queen (Optional)")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(false);
 
-        // Add all THREE inputs to the modal 
+        // Add inputs to the modal
         modal.addComponents(
             new ActionRowBuilder().addComponents(charNameInput),
             new ActionRowBuilder().addComponents(vocInput),
-            new ActionRowBuilder().addComponents(queenMessageInput) // Added!
+            new ActionRowBuilder().addComponents(queenMessageInput)
         );
 
-        // Show the form to the user
         await interaction.showModal(modal);
     }
 
     // --- IF SOMEONE SUBMITS THE POPUP FORM ---
     if (interaction.isModalSubmit()) {
-       // Extract their answers
         const charName = interaction.fields.getTextInputValue('charName');
         const vocation = interaction.fields.getTextInputValue('vocation').toUpperCase();
-        
-        // Grab the optional message (if they left it blank, save it as an empty string)
         const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
-        
         const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
 
         // 💾 SAVE TO SQLITE DATABASE WITH THE NEW MESSAGE 💾
         const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?)');
         stmt.run(interaction.user.id, charName, vocation, bossChoice, queenMessage);
 
-        // Figure out what the bot should say
         let replyText = "";
         
         if (vocation === 'MONK') {
-            // They are a Monk! Give them the roast, but confirm they are on the list.
             const roast = messages.getRandom(messages.monkRoasts);
             replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** [Signed up for: ${bossChoice}]`;
         } else {
-            // Standard Hype Announcement
             const hype = messages.getRandom(messages.standardHype);
             replyText = `✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`;
         }
 
-        // Send the final message to the channel
         await interaction.reply({ content: replyText });
-        }
-
-        // 💾 SAVE TO SQLITE DATABASE 💾
-        const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice) VALUES (?, ?, ?, ?)');
-        stmt.run(interaction.user.id, charName, vocation, bossChoice);
-
-        // Announce their successful sign-up to the channel!
-        const hype = messages.getRandom(messages.standardHype);
-        await interaction.reply(`✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`);
     }
-});
+}); // <--- This was the culprit! The missing closing brackets.
+
+// Ensure this is still the absolute LAST line of your file!
 client.login(process.env.DISCORD_TOKEN);
