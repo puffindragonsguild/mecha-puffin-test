@@ -29,8 +29,23 @@ module.exports = {
         "has successfully navigated the gates."
     ],
 
+    // Lazy Option
+    lazySnark: [
+        "Oh, too busy hunting rabbits to type a sentence? Fine.",
+        "A Lazy Option? The Queen is unimpressed by your lack of effort.",
+        "Laziness is a Monk-like trait, but here we are.",
+        "Wow, the absolute bare minimum. Truly inspiring."
+    ],
+    lazyQueenMessages: [
+        "I'm only here for the loot.",
+        "My sword is yours, but my words are expensive.",
+        "I forgot my speech at home.",
+        "Hail to the Queen, I guess."
+    ]
+};
+
     // A handy function to pick a random message from the lists above
     getRandom: function(array) {
         return array[Math.floor(Math.random() * array.length)];
-    }
+    }    
 };
