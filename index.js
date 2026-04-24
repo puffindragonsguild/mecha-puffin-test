@@ -141,10 +141,18 @@ client.on('interactionCreate', async interaction => {
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
-        // Add inputs to the modal (each input needs its own ActionRow)
+        // NEW: Create the Text Input for the Message
+        const queenMessageInput = new TextInputBuilder()
+            .setCustomId('queenMessage')
+            .setLabel("Message for the Queen (Optional)")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(false);
+
+        // Add all THREE inputs to the modal 
         modal.addComponents(
             new ActionRowBuilder().addComponents(charNameInput),
-            new ActionRowBuilder().addComponents(vocInput)
+            new ActionRowBuilder().addComponents(vocInput),
+            new ActionRowBuilder().addComponents(queenMessageInput) // Added!
         );
 
         // Show the form to the user
@@ -153,17 +161,34 @@ client.on('interactionCreate', async interaction => {
 
     // --- IF SOMEONE SUBMITS THE POPUP FORM ---
     if (interaction.isModalSubmit()) {
-        // Extract their answers
+       // Extract their answers
         const charName = interaction.fields.getTextInputValue('charName');
         const vocation = interaction.fields.getTextInputValue('vocation').toUpperCase();
         
-        // Figure out which boss they chose based on the Modal ID we set earlier
+        // Grab the optional message (if they left it blank, save it as an empty string)
+        const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
+        
         const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
 
-        // Check for Monk trolls
+        // 💾 SAVE TO SQLITE DATABASE WITH THE NEW MESSAGE 💾
+        const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?)');
+        stmt.run(interaction.user.id, charName, vocation, bossChoice, queenMessage);
+
+        // Figure out what the bot should say
+        let replyText = "";
+        
         if (vocation === 'MONK') {
+            // They are a Monk! Give them the roast, but confirm they are on the list.
             const roast = messages.getRandom(messages.monkRoasts);
-            return interaction.reply({ content: roast }); // Publicly roast them!
+            replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** [Signed up for: ${bossChoice}]`;
+        } else {
+            // Standard Hype Announcement
+            const hype = messages.getRandom(messages.standardHype);
+            replyText = `✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`;
+        }
+
+        // Send the final message to the channel
+        await interaction.reply({ content: replyText });
         }
 
         // 💾 SAVE TO SQLITE DATABASE 💾
