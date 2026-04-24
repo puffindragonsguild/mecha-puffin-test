@@ -168,11 +168,12 @@ client.on('messageCreate', message => {
 });
 
 // ---------------------------------------------------------
-// 2. INTERACTIONS
+// 2. INTERACTIONS (The Brain)
 // ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
     if (interaction.isButton()) {
+        // --- DROPOUT BUTTON HANDLER ---
         if (interaction.customId === 'dropout_btn') {
             const userId = interaction.user.id;
             const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
@@ -189,27 +190,39 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: "Choose your exit:", components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true });
         }
 
-        // --- CHOICE STAGE ---
-        if (interaction.customId.startsWith('choice_')) {
+        // --- STEP 1: QUEUE CHOICE (Main or Reserve) ---
+        if (interaction.customId.startsWith('signup_')) {
             if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
-            const boss = interaction.customId.replace('choice_', '');
+            const boss = interaction.customId.replace('signup_', '');
             
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`prep_manual_${boss}`).setLabel('Write Message').setStyle(ButtonStyle.Primary).setEmoji('✍️'),
-                new ButtonBuilder().setCustomId(`prep_lazy_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
+                new ButtonBuilder().setCustomId(`queue_MAIN_${boss}`).setLabel('Main Team').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
+                new ButtonBuilder().setCustomId(`queue_LAST_RESORT_${boss}`).setLabel('Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
             );
-            return interaction.reply({ content: "How will you address the Queen?", components: [row], ephemeral: true });
+            return interaction.reply({ content: `Signing up for **${boss}**. Are you aiming for the Main Team or acting as a Last Resort Reserve?`, components: [row], ephemeral: true });
         }
 
-        // --- PREP MODAL STAGE ---
-        if (interaction.customId.startsWith('prep_')) {
-            const [mode, boss] = interaction.customId.split('_').slice(1);
-            const modal = new ModalBuilder().setCustomId(`modal_${mode}_${boss}`).setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
+        // --- STEP 2: MESSAGE CHOICE (Manual or Lazy) ---
+        if (interaction.customId.startsWith('queue_')) {
+            const [_, qType, boss] = interaction.customId.split('_');
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`mode_manual_${qType}_${boss}`).setLabel('Manual Message').setStyle(ButtonStyle.Primary).setEmoji('✍️'),
+                new ButtonBuilder().setCustomId(`mode_lazy_${qType}_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
+            );
+            // Use .update to avoid "Interaction Failed" 
+            return interaction.update({ content: `Selected: **${qType}**. How will you address the Queen?`, components: [row] });
+        }
+
+        // --- STEP 3: MODAL TRIGGER ---
+        if (interaction.customId.startsWith('mode_')) {
+            const [_, mode, qType, boss] = interaction.customId.split('_');
+            const modal = new ModalBuilder().setCustomId(`modal_${mode}_${qType}_${boss}`).setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
+            
             const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Character Name").setStyle(TextInputStyle.Short).setRequired(true);
             const rows = [new ActionRowBuilder().addComponents(nameInput)];
             
             if (mode === 'manual') {
-                const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Your Message").setStyle(TextInputStyle.Paragraph).setRequired(false);
+                const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Your Message (REQUIRED)").setStyle(TextInputStyle.Paragraph).setRequired(false);
                 rows.push(new ActionRowBuilder().addComponents(msgInput));
             }
             modal.addComponents(...rows);
@@ -217,6 +230,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // --- B. DROPDOWN PROCESSOR ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
         const parts = interaction.values[0].split('_');
         const action = parts[1]; const type = parts[2]; const signupId = parts[parts.length - 1];
@@ -236,17 +250,16 @@ client.on('interactionCreate', async interaction => {
         displayRoster(interaction.channel);
     }
 
+    // --- C. FINAL SIGNUP PROCESSOR ---
     if (interaction.isModalSubmit()) {
-        const parts = interaction.customId.split('_');
-        const mode = parts[1];
-        const bossChoice = parts[2];
+        const [_, mode, qType, bossChoice] = interaction.customId.split('_');
         const rawName = interaction.fields.getTextInputValue('charName');
         let queenMessage = "";
 
         if (mode === 'manual') {
             queenMessage = interaction.fields.getTextInputValue('queenMessage');
             if (!queenMessage || queenMessage.trim() === "") {
-                return interaction.reply({ content: "❌ **REJECTED:** You chose Manual but left it blank! Try again or use Lazy Option.", ephemeral: true });
+                return interaction.reply({ content: "❌ **REJECTED:** You chose Manual but left it blank! The Queen demands effort. Try again or use Lazy Option.", ephemeral: true });
             }
         } else {
             queenMessage = messages.getRandom(messages.lazyQueenMessages);
@@ -267,13 +280,16 @@ client.on('interactionCreate', async interaction => {
             }
 
             const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
-            let finalChoice = bossChoice;
+            
+            let finalChoice = (qType === 'LAST_RESORT') ? 'LAST_RESORT' : bossChoice;
             let note = "";
-            if (!isPuffin && !['RESERVE', 'LAST_RESORT'].includes(bossChoice)) {
+            
+            if (!isPuffin && qType === 'MAIN') {
                 finalChoice = `PUBLIC_${bossChoice}`;
                 note = `\n*(Public queue: 48h wait)*`;
             }
 
+            // Vocation Mapper
             let vocAbbr = rawVoc; let vocEmoji = '❓';
             if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
