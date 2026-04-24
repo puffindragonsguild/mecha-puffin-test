@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
 const messages = require('./messages.js');
 const db = require('./database.js'); 
 
@@ -204,9 +204,6 @@ client.on('messageCreate', message => {
 // ---------------------------------------------------------
 // 2. LISTENING FOR BUTTON CLICKS & FORMS
 // ---------------------------------------------------------
-// ---------------------------------------------------------
-// 2. LISTENING FOR INTERACTIONS
-// ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
     // --- A. BUTTON HANDLER ---
@@ -248,30 +245,39 @@ client.on('interactionCreate', async interaction => {
         await interaction.showModal(modal);
     }
 
-    // --- B. DROPDOWN PROCESSOR (The New Brain) ---
+    // --- B. DROPDOWN PROCESSOR ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
+        // Corrected splitting logic: drop_part_LLK_12 -> ["drop", "part", "LLK", "12"]
         const parts = interaction.values[0].split('_'); 
         const action = parts[1]; // 'part' or 'full'
-        const type = parts[2];   // 'LLK', 'HOD', or 'BOTH'
-        const signupId = parts[3];
+        const type = parts[2];   // 'LLK', 'HOD', 'BOTH', or BossName
+        const signupId = parts[parts.length - 1]; // Always the last piece
 
         const signup = db.prepare('SELECT * FROM signups WHERE id = ?').get(signupId);
-        if (!signup) return interaction.update({ content: "Error: Record not found.", components: [] });
+        
+        if (!signup) {
+            return interaction.update({ content: "❌ Error: Record not found in the Puffin memory banks.", components: [] });
+        }
 
         let finalMsg = "";
 
         if (action === 'part') {
-            // Downgrade "BOTH" to just the remaining boss
-            const newChoice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${type === 'LLK' ? 'HOD' : 'LLK'}` : (type === 'LLK' ? 'HOD' : 'LLK');
+            // Logic to keep the OTHER boss
+            const remainingBoss = (type === 'LLK') ? 'HOD' : 'LLK';
+            const newChoice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remainingBoss}` : remainingBoss;
+            
             db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signupId);
-            finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${type} but is still in for the other!`;
+            finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${type} but is still in for ${remainingBoss}!`;
         } else {
             // Full deletion
             db.prepare('DELETE FROM signups WHERE id = ?').run(signupId);
             finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** has fled the raid entirely!`;
         }
 
-        await interaction.update({ content: "Retreat processed. You are now dismissed.", components: [] });
+        // Update the ephemeral message to close the menu
+        await interaction.update({ content: "✅ Your retreat has been processed. You are dismissed.", components: [] });
+        
+        // Send public announcement and refresh roster
         interaction.channel.send(finalMsg);
         displayRoster(interaction.channel);
     }
