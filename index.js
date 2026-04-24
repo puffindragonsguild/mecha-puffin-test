@@ -8,7 +8,7 @@ const client = new Client({
 });
 
 let gatesOpen = false;
-let hypeInterval; // Tracker for the 24-hour loop
+let hypeInterval; 
 
 client.once('ready', () => {
     console.log('🤖 Mecha-Puffin Test Engine is ONLINE!');
@@ -25,9 +25,7 @@ async function displayRoster(target) {
     const firstSignupTime = new Date(allSignups[0].created_at || Date.now()).getTime();
     const windowExpired = (Date.now() - firstSignupTime) > fortyEightHours;
 
-    // --- CREATE BUTTONS FOR THE ROSTER MESSAGE ---
     const row = new ActionRowBuilder();
-    // Check which bosses are represented in the current batch to show relevant buttons
     const currentBosses = [...new Set(allSignups.map(s => s.boss_choice))];
     
     if (currentBosses.some(b => b.includes('LLK') || b.includes('HOD') || b.includes('BOTH'))) {
@@ -39,7 +37,6 @@ async function displayRoster(target) {
     } else if (currentBosses.some(b => b.includes('FERU'))) {
         row.addComponents(new ButtonBuilder().setCustomId('signup_feru').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️'));
     }
-    // Add a universal Drop Out button for convenience
     row.addComponents(new ButtonBuilder().setCustomId('dropout_btn').setLabel('Drop Out').setStyle(ButtonStyle.Secondary).setEmoji('🏃'));
 
     const addSection = (name, emoji, key) => {
@@ -48,8 +45,10 @@ async function displayRoster(target) {
         );
 
         if (players.length > 0) {
-            let mainList = windowExpired ? players : players.filter(p => !p.boss_choice.startsWith('PUBLIC_'));
+            // Priority: Puffins -> Public -> LAST_RESORT
+            let mainList = windowExpired ? players.filter(p => p.boss_choice !== 'LAST_RESORT') : players.filter(p => !p.boss_choice.startsWith('PUBLIC_') && p.boss_choice !== 'LAST_RESORT');
             let publicQueue = windowExpired ? [] : players.filter(p => p.boss_choice.startsWith('PUBLIC_'));
+            let lastResorts = players.filter(p => p.boss_choice === 'LAST_RESORT');
 
             const mainTeam = mainList.slice(0, maxPlayers);
             const mainReserves = mainList.slice(maxPlayers);
@@ -66,6 +65,11 @@ async function displayRoster(target) {
                 const publicText = publicQueue.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
                 rosterEmbed.fields.push({ name: `📢 ${name} PUBLIC QUEUE (Waitlisted)`, value: publicText, inline: false });
             }
+
+            if (lastResorts.length > 0) {
+                const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                rosterEmbed.fields.push({ name: `🆘 ${name} LAST RESORT RESERVES`, value: lastText, inline: false });
+            }
         }
     };
 
@@ -75,85 +79,39 @@ async function displayRoster(target) {
 
     const timeLeft = Math.max(0, (fortyEightHours - (Date.now() - firstSignupTime)) / (1000 * 60 * 60));
     rosterEmbed.footer = { 
-        text: (windowExpired ? "✅ Public queue merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)}h.`) + "\n❌ Need to drop out? Use the button or type !dropout"
+        text: (windowExpired ? "✅ Public queue merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)}h.`) + "\n❌ Type !dropout to flee"
     };
 
-    // Send the embed with the buttons attached
     return target.send({ embeds: [rosterEmbed], components: row.components.length > 0 ? [row] : [] });
 }
 
-// --- HYPE LOOP TRIGGER ---
+// --- HYPE LOOP ---
 const startHypeLoop = (message, raidType) => {
     if (hypeInterval) clearInterval(hypeInterval);
     hypeInterval = setInterval(() => {
         if (!gatesOpen) return clearInterval(hypeInterval);
-        message.channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nWe still need more Puffins for **${raidType}**!`);
+        message.channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nStill need Puffins for **${raidType}**!`);
         displayRoster(message.channel);
     }, 24 * 60 * 60 * 1000); 
 };
 
 // ---------------------------------------------------------
-// 1. LISTENING FOR CHAT COMMANDS
+// 1. CHAT COMMANDS
 // ---------------------------------------------------------
 client.on('messageCreate', message => {
     if (message.author.bot) return;
 
     if (message.content === '!hail') message.reply('HAIL FORTUNA FELIS! 👑');
-
     if (message.content === '!roster') displayRoster(message.channel);
-
-    if (message.content.startsWith('!dropout')) {
-        const userId = message.author.id;
-        const args = message.content.split(' ');
-        const targetInput = args.slice(1).join(' ').toUpperCase(); // e.g., "LLK" or "HOD"
-
-        const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
-        
-        if (userSignups.length === 0) return message.reply("You aren't on the list, Puffin!");
-
-        // If they have multiple characters and didn't specify WHICH character
-        if (userSignups.length > 1 && !targetInput.includes(' ')) {
-            const list = userSignups.map(s => `• **${s.character_name}** (${s.boss_choice})`).join('\n');
-            return message.reply(`You have multiple characters. Use \`!dropout [Character Name] [Boss]\`:\n${list}`);
-        }
-
-        // Find the specific record
-        const signup = userSignups.find(s => targetInput.includes(s.character_name.toUpperCase()) || userSignups.length === 1);
-        
-        if (!signup) return message.reply("I couldn't find that character under your name.");
-
-        let finalMsg = "";
-        const choice = signup.boss_choice;
-
-        // --- THE BOTH-SPLITTING LOGIC ---
-        if (choice === 'BOTH' || choice.startsWith('PUBLIC_BOTH')) {
-            if (targetInput.includes('LLK')) {
-                const newChoice = choice.includes('PUBLIC') ? 'PUBLIC_HOD' : 'HOD';
-                db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signup.id);
-                finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped LLK but is still in for HoD!`;
-            } else if (targetInput.includes('HOD')) {
-                const newChoice = choice.includes('PUBLIC') ? 'PUBLIC_LLK' : 'LLK';
-                db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signup.id);
-                finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped HoD but is still in for LLK!`;
-            } else {
-                return message.reply("You are signed up for **BOTH**. Please type `!dropout [Name] LLK` or `!dropout [Name] HOD` to drop just one.");
-            }
-        } else {
-            // Standard full dropout
-            db.prepare('DELETE FROM signups WHERE id = ?').run(signup.id);
-            finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** has fled the raid entirely!`;
-        }
-
-        message.channel.send(finalMsg);
-        displayRoster(message.channel);
-    }
+    if (message.content === '!clear') { db.prepare('DELETE FROM signups').run(); message.reply('🧹 Roster wiped.'); }
+    if (message.content === '!close') { gatesOpen = false; if (hypeInterval) clearInterval(hypeInterval); message.reply('🛑 Gates Closed.'); }
 
     if (message.content === '!open dt') {
         gatesOpen = true;
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('signup_llk').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
-            new ButtonBuilder().setCustomId('signup_hod').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
-            new ButtonBuilder().setCustomId('signup_both').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
+            new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
+            new ButtonBuilder().setCustomId('choice_HOD').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
+            new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
         );
         message.channel.send({ content: '🚨 **DOUBLE TROUBLE POSTED** 🚨', components: [row] });
         startHypeLoop(message, 'Double Trouble');
@@ -162,184 +120,179 @@ client.on('messageCreate', message => {
     if (message.content === '!open feru') {
         gatesOpen = true;
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('signup_feru').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
+            new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
         );
         message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨', components: [row] });
         startHypeLoop(message, 'Ferumbras');
     }
 
-    if (message.content === '!open dt reserve') {
+    if (message.content === '!open reserves') {
         gatesOpen = true;
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('signup_reserve').setLabel('Sign Up: Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('⏳')
+            new ButtonBuilder().setCustomId('choice_LAST_RESORT').setLabel('Last Resort Reserve').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
         );
-        message.channel.send({ content: '⚠️ **RESERVE LIST ONLY** ⚠️', components: [row] });
+        message.channel.send({ content: '⚠️ **LAST RESORT SIGNUPS OPEN** ⚠️\nOnly sign up here if you are purely helping fill gaps!', components: [row] });
     }
 
-    if (message.content === '!close') {
-        gatesOpen = false;
-        if (hypeInterval) clearInterval(hypeInterval);
-        message.reply('🛑 **The gates are now CLOSED.**');
-    }
+    if (message.content.startsWith('!dropout')) {
+        const userId = message.author.id;
+        const args = message.content.split(' ');
+        const targetInput = args.slice(1).join(' ').toUpperCase();
+        const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
+        if (userSignups.length === 0) return message.reply("Not on the list!");
 
-    if (message.content === '!clear') {
-        db.prepare('DELETE FROM signups').run();
-        message.reply('🧹 **Roster wiped clean!**');
+        const signup = userSignups.find(s => targetInput.includes(s.character_name.toUpperCase()) || userSignups.length === 1);
+        if (!signup) return message.reply("Character not found.");
+
+        let finalMsg = "";
+        if ((signup.boss_choice.includes('BOTH')) && (targetInput.includes('LLK') || targetInput.includes('HOD'))) {
+            const part = targetInput.includes('LLK') ? 'LLK' : 'HOD';
+            const remaining = part === 'LLK' ? 'HOD' : 'LLK';
+            const newChoice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remaining}` : remaining;
+            db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signup.id);
+            finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${part}.`;
+        } else {
+            db.prepare('DELETE FROM signups WHERE id = ?').run(signup.id);
+            finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** fled!`;
+        }
+        message.channel.send(finalMsg);
+        displayRoster(message.channel);
     }
 
     if (message.content.startsWith('!whitelist')) {
         const args = message.content.split(' ');
-        const action = args[1];
         const name = args.slice(2).join(' ');
-        if (action === 'add') {
-            db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name);
-            message.reply(`✅ **${name}** added to Whitelist.`);
-        } else if (action === 'remove') {
-            db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name);
-            message.reply(`🗑️ **${name}** removed.`);
-        }
+        if (args[1] === 'add') { db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name); message.reply(`✅ Whitelisted ${name}`); }
+        else { db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name); message.reply(`🗑️ Removed ${name}`); }
     }
 });
 
 // ---------------------------------------------------------
-// 2. LISTENING FOR BUTTON CLICKS & FORMS
+// 2. INTERACTIONS
 // ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
-    // --- A. BUTTON HANDLER ---
     if (interaction.isButton()) {
         if (interaction.customId === 'dropout_btn') {
             const userId = interaction.user.id;
             const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
-
-            if (userSignups.length === 0) return interaction.reply({ content: "You aren't on the list, Puffin!", ephemeral: true });
-
-            // Create a sleek Dropdown Menu
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('dropout_select')
-                .setPlaceholder('Select which commitment to abandon...');
-
+            if (userSignups.length === 0) return interaction.reply({ content: "Not on the list!", ephemeral: true });
+            
+            const selectMenu = new StringSelectMenuBuilder().setCustomId('dropout_select').setPlaceholder('Select exit...');
             userSignups.forEach(s => {
                 if (s.boss_choice.includes('BOTH')) {
-                    selectMenu.addOptions(
-                        { label: `${s.character_name} (Drop LLK Only)`, value: `drop_part_LLK_${s.id}` },
-                        { label: `${s.character_name} (Drop HoD Only)`, value: `drop_part_HOD_${s.id}` },
-                        { label: `${s.character_name} (Drop Both Entirely)`, value: `drop_full_BOTH_${s.id}` }
-                    );
+                    selectMenu.addOptions({ label: `${s.character_name} (Drop LLK)`, value: `drop_part_LLK_${s.id}` }, { label: `${s.character_name} (Drop HoD)`, value: `drop_part_HOD_${s.id}` }, { label: `${s.character_name} (Drop All)`, value: `drop_full_BOTH_${s.id}` });
                 } else {
-                    const boss = s.boss_choice.replace('PUBLIC_', '');
-                    selectMenu.addOptions({ label: `${s.character_name} (${boss})`, value: `drop_full_${boss}_${s.id}` });
+                    selectMenu.addOptions({ label: `${s.character_name} (${s.boss_choice.replace('PUBLIC_', '')})`, value: `drop_full_${s.boss_choice}_${s.id}` });
                 }
             });
-
-            const row = new ActionRowBuilder().addComponents(selectMenu);
-            return interaction.reply({ content: "Cowardice noted. Choose your exit:", components: [row], ephemeral: true });
+            return interaction.reply({ content: "Choose your exit:", components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true });
         }
 
-        // Standard Sign-up Button logic
-        if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
-        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('Mecha-Puffin Registration');
-        const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Exact character name?").setStyle(TextInputStyle.Short).setRequired(true);
-        const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Message for the Queen?").setStyle(TextInputStyle.Paragraph).setRequired(false);
-        modal.addComponents(new ActionRowBuilder().addComponents(nameInput), new ActionRowBuilder().addComponents(msgInput));
-        await interaction.showModal(modal);
+        // --- CHOICE STAGE ---
+        if (interaction.customId.startsWith('choice_')) {
+            if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
+            const boss = interaction.customId.replace('choice_', '');
+            
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`prep_manual_${boss}`).setLabel('Write Message').setStyle(ButtonStyle.Primary).setEmoji('✍️'),
+                new ButtonBuilder().setCustomId(`prep_lazy_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
+            );
+            return interaction.reply({ content: "How will you address the Queen?", components: [row], ephemeral: true });
+        }
+
+        // --- PREP MODAL STAGE ---
+        if (interaction.customId.startsWith('prep_')) {
+            const [mode, boss] = interaction.customId.split('_').slice(1);
+            const modal = new ModalBuilder().setCustomId(`modal_${mode}_${boss}`).setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
+            const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Character Name").setStyle(TextInputStyle.Short).setRequired(true);
+            const rows = [new ActionRowBuilder().addComponents(nameInput)];
+            
+            if (mode === 'manual') {
+                const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Your Message").setStyle(TextInputStyle.Paragraph).setRequired(false);
+                rows.push(new ActionRowBuilder().addComponents(msgInput));
+            }
+            modal.addComponents(...rows);
+            await interaction.showModal(modal);
+        }
     }
 
-    // --- B. DROPDOWN PROCESSOR ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
-        // Corrected splitting logic: drop_part_LLK_12 -> ["drop", "part", "LLK", "12"]
-        const parts = interaction.values[0].split('_'); 
-        const action = parts[1]; // 'part' or 'full'
-        const type = parts[2];   // 'LLK', 'HOD', 'BOTH', or BossName
-        const signupId = parts[parts.length - 1]; // Always the last piece
-
+        const parts = interaction.values[0].split('_');
+        const action = parts[1]; const type = parts[2]; const signupId = parts[parts.length - 1];
         const signup = db.prepare('SELECT * FROM signups WHERE id = ?').get(signupId);
-        
-        if (!signup) {
-            return interaction.update({ content: "❌ Error: Record not found in the Puffin memory banks.", components: [] });
-        }
-
-        let finalMsg = "";
+        if (!signup) return interaction.update({ content: "Error: Not found.", components: [] });
 
         if (action === 'part') {
-            // Logic to keep the OTHER boss
-            const remainingBoss = (type === 'LLK') ? 'HOD' : 'LLK';
-            const newChoice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remainingBoss}` : remainingBoss;
-            
-            db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signupId);
-            finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${type} but is still in for ${remainingBoss}!`;
+            const remain = type === 'LLK' ? 'HOD' : 'LLK';
+            const choice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remain}` : remain;
+            db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(choice, signupId);
+            interaction.channel.send(`🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${type}.`);
         } else {
-            // Full deletion
             db.prepare('DELETE FROM signups WHERE id = ?').run(signupId);
-            finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** has fled the raid entirely!`;
+            interaction.channel.send(`🏃💨 **ABANDONMENT:** **${signup.character_name}** fled.`);
         }
-
-        // Update the ephemeral message to close the menu
-        await interaction.update({ content: "✅ Your retreat has been processed. You are dismissed.", components: [] });
-        
-        // Send public announcement and refresh roster
-        interaction.channel.send(finalMsg);
+        await interaction.update({ content: "Processed.", components: [] });
         displayRoster(interaction.channel);
     }
 
-    // --- C. MODAL SUBMISSION (Sign-up Processor) ---
     if (interaction.isModalSubmit()) {
+        const parts = interaction.customId.split('_');
+        const mode = parts[1];
+        const bossChoice = parts[2];
         const rawName = interaction.fields.getTextInputValue('charName');
-        const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
-        const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
+        let queenMessage = "";
 
-        await interaction.deferReply(); 
+        if (mode === 'manual') {
+            queenMessage = interaction.fields.getTextInputValue('queenMessage');
+            if (!queenMessage || queenMessage.trim() === "") {
+                return interaction.reply({ content: "❌ **REJECTED:** You chose Manual but left it blank! Try again or use Lazy Option.", ephemeral: true });
+            }
+        } else {
+            queenMessage = messages.getRandom(messages.lazyQueenMessages);
+        }
 
+        await interaction.deferReply();
         try {
-            const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
-            const data = await response.json();
-
-            if (!data.character?.character?.name) return interaction.editReply(`❌ Character **${rawName}** not found.`);
-
-            const char = data.character.character;
-            const charName = char.name; 
-            const charLevel = char.level;
-            const rawVocation = char.vocation.toUpperCase();
-            const guildName = char.guild?.name || null;
-
-            if (rawVocation === 'NONE') return interaction.editReply(`❌ Rookgaardian detected.`);
-
-            const existing = db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
-            if (existing) return interaction.editReply(`❌ **Error:** **${charName}** is already on the roster!`);
-
-            const manualWhitelist = db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
-            const isPuffin = (guildName === "Puffin Dragons") || manualWhitelist;
+            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
+            const data = await res.json();
+            if (!data.character?.character?.name) return interaction.editReply(`❌ **${rawName}** not found.`);
             
-            let finalChoice = bossChoice;
-            let note = "";
-            if (!isPuffin && bossChoice !== 'RESERVE') {
-                finalChoice = `PUBLIC_${bossChoice}`;
-                note = `\n*(Note: You are in the public queue for 48h)*`;
+            const char = data.character.character;
+            const charName = char.name; const charLevel = char.level; const rawVoc = char.vocation.toUpperCase();
+            if (rawVoc === 'NONE') return interaction.editReply(`❌ Rookgaardian detected.`);
+
+            if (db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName)) {
+                return interaction.editReply(`❌ **${charName}** is already signed up.`);
             }
 
-            let vocAbbr = rawVocation; let vocEmoji = '❓';
-            if (rawVocation.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
-            else if (rawVocation.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
-            else if (rawVocation.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
-            else if (rawVocation.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
-            else if (rawVocation.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
+            const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
+            let finalChoice = bossChoice;
+            let note = "";
+            if (!isPuffin && !['RESERVE', 'LAST_RESORT'].includes(bossChoice)) {
+                finalChoice = `PUBLIC_${bossChoice}`;
+                note = `\n*(Public queue: 48h wait)*`;
+            }
+
+            let vocAbbr = rawVoc; let vocEmoji = '❓';
+            if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
+            else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
+            else if (rawVoc.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
+            else if (rawVoc.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
+            else if (rawVoc.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
             const formattedVoc = `${vocEmoji} ${vocAbbr}`;
 
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
 
-            let replyText = rawVocation.includes('MONK') ? `${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}>, **${charName}** added!${note}` : `✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
-            if (queenMessage.trim() !== "") replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
+            let snark = mode === 'lazy' ? `😒 **${messages.getRandom(messages.lazySnark)}**\n` : "";
+            let replyText = rawVoc.includes('MONK') ? `${snark}${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}> added!` : `${snark}✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] ${messages.getRandom(messages.standardHype)}!`;
+            replyText += `\n👑 **Address:** *"${queenMessage}"*${note}`;
 
             await interaction.editReply({ content: replyText });
             await displayRoster(interaction.channel);
-
-        } catch (error) {
-            console.error(error);
-            await interaction.editReply("⚠️ The Mecha-Puffin encountered an API error.");
-        }
+        } catch (e) { console.error(e); await interaction.editReply("⚠️ API Error."); }
     }
 });
 
-// Final Login
 client.login(process.env.DISCORD_TOKEN);
