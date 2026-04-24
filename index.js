@@ -14,7 +14,6 @@ const client = new Client({
 let gatesOpen = false;
 let hypeInterval; 
 
-// ✅ FIX 1: Rename 'ready' to 'clientReady' per deprecation warning
 client.once('clientReady', () => {
     console.log('🤖 Mecha-Puffin Test Engine is ONLINE!');
 });
@@ -50,7 +49,6 @@ async function displayRoster(target) {
         );
 
         if (players.length > 0) {
-            // 1. Filter the lists
             let lastResorts = players.filter(p => p.boss_choice === 'LAST_RESORT');
             let others = players.filter(p => p.boss_choice !== 'LAST_RESORT');
 
@@ -60,7 +58,6 @@ async function displayRoster(target) {
             const mainTeam = mainList.slice(0, maxPlayers);
             const puffinReserves = mainList.slice(maxPlayers);
 
-            // 2. Format and add sections to Embed
             const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
             rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
 
@@ -74,7 +71,6 @@ async function displayRoster(target) {
                 rosterEmbed.fields.push({ name: `📢 ${name} PUBLIC QUEUE (Waitlist)`, value: publicText, inline: false });
             }
 
-            // NEW: The Last Resort section at the very bottom
             if (lastResorts.length > 0) {
                 const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
                 rosterEmbed.fields.push({ name: `🆘 ${name} LAST RESORT RESERVES`, value: lastText, inline: false });
@@ -196,14 +192,14 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: "Choose your exit:", components: [new ActionRowBuilder().addComponents(selectMenu)], flags: MessageFlags.Ephemeral });
         }
 
-        // --- STEP 1: QUEUE CHOICE ---
+        // --- STEP 1: QUEUE CHOICE (Main vs Reserve) ---
         if (interaction.customId.startsWith('choice_')) {
             if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), flags: MessageFlags.Ephemeral });
             
             const boss = interaction.customId.replace('choice_', '');
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`queue_MAIN_${boss}`).setLabel('Main Team').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
-                new ButtonBuilder().setCustomId(`queue_LAST_RESORT_${boss}`).setLabel('Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
+                new ButtonBuilder().setCustomId(`queue_LASTRESORT_${boss}`).setLabel('Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
             );
 
             return interaction.reply({ 
@@ -213,33 +209,51 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // --- STEP 2: MESSAGE CHOICE ---
+        // --- STEP 2: MESSAGE CHOICE (Manual vs Lazy) ---
         if (interaction.customId.startsWith('queue_')) {
-            const [_, qType, boss] = interaction.customId.split('_');
+            const parts = interaction.customId.split('_');
+            const qType = parts[1]; // MAIN or LASTRESORT
+            const boss = parts[2];
+            
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`mode_manual_${qType}_${boss}`).setLabel('Manual Message').setStyle(ButtonStyle.Primary).setEmoji('✍️'),
                 new ButtonBuilder().setCustomId(`mode_lazy_${qType}_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
             );
             
-            // ✅ FIX: Use .update() instead of .reply() for ephemeral steps
             return interaction.update({ 
-                content: `Selected Queue: **${qType}**. How will you address the Queen?`, 
+                content: `Selected Queue: **${qType === 'LASTRESORT' ? 'LAST RESORT' : 'MAIN'}**. How will you address the Queen?`, 
                 components: [row] 
             });
         }
 
-        // --- STEP 3: MODAL ---
+        // --- STEP 3: MODAL TRIGGER ---
         if (interaction.customId.startsWith('mode_')) {
-            const [_, mode, qType, boss] = interaction.customId.split('_');
-            const modal = new ModalBuilder().setCustomId(`modal_${mode}_${qType}_${boss}`).setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
+            const parts = interaction.customId.split('_');
+            const mode = parts[1]; 
+            const qType = parts[2];
+            const boss = parts[3];
+
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_${mode}_${qType}_${boss}`)
+                .setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
             
-            const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Character Name").setStyle(TextInputStyle.Short).setRequired(true);
+            const nameInput = new TextInputBuilder()
+                .setCustomId('charName')
+                .setLabel("Character Name")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
             const rows = [new ActionRowBuilder().addComponents(nameInput)];
             
             if (mode === 'manual') {
-                const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Your Message (REQUIRED)").setStyle(TextInputStyle.Paragraph).setRequired(false);
+                const msgInput = new TextInputBuilder()
+                    .setCustomId('queenMessage')
+                    .setLabel("Your Message (REQUIRED)")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(false);
                 rows.push(new ActionRowBuilder().addComponents(msgInput));
             }
+            
             modal.addComponents(...rows);
             await interaction.showModal(modal);
         }
@@ -261,33 +275,42 @@ client.on('interactionCreate', async interaction => {
             db.prepare('DELETE FROM signups WHERE id = ?').run(signupId);
             interaction.channel.send(`🏃💨 **ABANDONMENT:** **${signup.character_name}** fled.`);
         }
-        await interaction.update({ content: "Processed.", components: [] });
+        await interaction.update({ content: "Processed successfully.", components: [] });
         displayRoster(interaction.channel);
     }
 
-    // --- C. FINAL SIGNUP ---
+    // --- C. FINAL MODAL SUBMIT ---
     if (interaction.isModalSubmit()) {
-        const [_, mode, qType, bossChoice] = interaction.customId.split('_');
+        const parts = interaction.customId.split('_');
+        const mode = parts[1];
+        const qType = parts[2]; // MAIN or LASTRESORT
+        const bossChoice = parts[3];
+
         const rawName = interaction.fields.getTextInputValue('charName');
         let queenMessage = "";
 
         if (mode === 'manual') {
             queenMessage = interaction.fields.getTextInputValue('queenMessage');
             if (!queenMessage || queenMessage.trim() === "") {
-                return interaction.reply({ content: "❌ **REJECTED:** Message required for Manual mode.", flags: MessageFlags.Ephemeral });
+                return interaction.reply({ 
+                    content: "❌ **REJECTED:** Message required for Manual mode.", 
+                    flags: MessageFlags.Ephemeral 
+                });
             }
         } else {
             queenMessage = messages.getRandom(messages.lazyQueenMessages);
         }
 
-        await interaction.deferReply();
+        await interaction.deferReply(); 
         try {
             const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await res.json();
             if (!data.character?.character?.name) return interaction.editReply(`❌ **${rawName}** not found.`);
             
             const char = data.character.character;
-            const charName = char.name; const charLevel = char.level; const rawVoc = char.vocation.toUpperCase();
+            const charName = char.name; 
+            const charLevel = char.level; 
+            const rawVoc = char.vocation.toUpperCase();
             if (rawVoc === 'NONE') return interaction.editReply(`❌ Rookgaardian detected.`);
 
             if (db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName)) {
@@ -296,7 +319,8 @@ client.on('interactionCreate', async interaction => {
 
             const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             
-            let finalChoice = (qType === 'LAST_RESORT') ? 'LAST_RESORT' : bossChoice;
+            // ✅ Fix: Use the correct internal name
+            let finalChoice = (qType === 'LASTRESORT') ? 'LAST_RESORT' : bossChoice;
             let note = "";
             
             if (!isPuffin && qType === 'MAIN') {
@@ -304,7 +328,6 @@ client.on('interactionCreate', async interaction => {
                 note = `\n*(Public queue: 48h wait)*`;
             }
 
-            // Vocation Mapper
             let vocAbbr = rawVoc; let vocEmoji = '❓';
             if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
@@ -322,7 +345,10 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: replyText });
             await displayRoster(interaction.channel);
-        } catch (e) { console.error(e); await interaction.editReply("⚠️ API Error."); }
+        } catch (e) { 
+            console.error(e); 
+            await interaction.editReply("⚠️ API Error connecting to TibiaData."); 
+        }
     }
 });
 
