@@ -112,6 +112,9 @@ client.on('messageCreate', message => {
 // ---------------------------------------------------------
 // 2. LISTENING FOR BUTTON CLICKS & FORMS
 // ---------------------------------------------------------
+// ---------------------------------------------------------
+// 2. LISTENING FOR BUTTON CLICKS & FORMS
+// ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
     // --- IF SOMEONE CLICKS A BUTTON ---
@@ -126,27 +129,18 @@ client.on('interactionCreate', async interaction => {
 
         const charNameInput = new TextInputBuilder()
             .setCustomId('charName')
-            .setLabel("What is your character's name?")
+            .setLabel("What is your exact character name?")
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
-        const vocInput = new TextInputBuilder()
-            .setCustomId('vocation')
-            .setLabel("What is your vocation? (EK, ED, MS, RP)")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        // The Text Input for the Message
         const queenMessageInput = new TextInputBuilder()
             .setCustomId('queenMessage')
             .setLabel("Message for the Queen (Optional)")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(false);
 
-        // Add inputs to the modal
         modal.addComponents(
             new ActionRowBuilder().addComponents(charNameInput),
-            new ActionRowBuilder().addComponents(vocInput),
             new ActionRowBuilder().addComponents(queenMessageInput)
         );
 
@@ -155,33 +149,58 @@ client.on('interactionCreate', async interaction => {
 
     // --- IF SOMEONE SUBMITS THE POPUP FORM ---
     if (interaction.isModalSubmit()) {
-        const charName = interaction.fields.getTextInputValue('charName');
-        const vocation = interaction.fields.getTextInputValue('vocation').toUpperCase();
+        const rawName = interaction.fields.getTextInputValue('charName');
         const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
         const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
 
-        // 💾 SAVE TO SQLITE DATABASE WITH THE NEW MESSAGE 💾
-        const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?)');
-        stmt.run(interaction.user.id, charName, vocation, bossChoice, queenMessage);
+        // ⏱️ Tell Discord to "hold on" while we check the API
+        await interaction.deferReply(); 
 
-        // Figure out what the bot should say
-        let replyText = "";
-        
-        if (vocation === 'MONK') {
-            const roast = messages.getRandom(messages.monkRoasts);
-            replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** [Signed up for: ${bossChoice}]`;
-        } else {
-            const hype = messages.getRandom(messages.standardHype);
-            replyText = `✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`;
+        try {
+            // 🌐 CALLING THE TIBIA SERVERS
+            const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
+            const data = await response.json();
+
+            // 🛑 GHOST CHECK: Does the character exist?
+            if (!data.character || !data.character.character || data.character.character.name === "") {
+                return interaction.editReply(`❌ **Access Denied:** The character **${rawName}** does not exist. The Gatekeeper refuses you!`);
+            }
+
+            const charName = data.character.character.name; 
+            const vocation = data.character.character.vocation.toUpperCase();
+
+            // 🛑 ROOKGAARD CHECK: Are they still on the tutorial island?
+            if (vocation === 'NONE') {
+                return interaction.editReply(`❌ **Access Denied:** **${charName}** is still on Rookgaard! The Mecha-Puffin only accepts mainlanders. Go see the Oracle!`);
+            }
+
+            // 💾 SAVE TO SQLITE DATABASE
+            const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?)');
+            stmt.run(interaction.user.id, charName, vocation, bossChoice, queenMessage);
+
+            let replyText = "";
+            
+            // 🤡 THE MONK ROAST (Restored!)
+            if (vocation === 'MONK' || vocation === 'EXALTED MONK') {
+                const roast = messages.getRandom(messages.monkRoasts);
+                replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** (${vocation}) [Signed up for: ${bossChoice}]`;
+            } else {
+                // Standard Hype Announcement
+                const hype = messages.getRandom(messages.standardHype);
+                replyText = `✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`;
+            }
+
+            if (queenMessage.trim() !== "") {
+                replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
+            }
+
+            // Send the final official announcement
+            await interaction.editReply({ content: replyText });
+
+        } catch (error) {
+            console.error("API Error:", error);
+            await interaction.editReply("⚠️ **System Failure:** The Mecha-Puffin couldn't reach the Tibia servers. They might be under maintenance!");
         }
-
-        // 💌 NEW: Attach the Queen's message to the announcement if they wrote one!
-        if (queenMessage.trim() !== "") {
-            replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
-        }
-
-        // Send the final message to the channel
-        await interaction.reply({ content: replyText });
     }
 }); // <--- This was the culprit! The missing closing brackets.
 
