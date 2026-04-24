@@ -172,7 +172,6 @@ client.on('messageCreate', message => {
 // ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
-    // --- A. BUTTON HANDLER ---
     if (interaction.isButton()) {
         
         // 1. DROPOUT BUTTON HANDLER
@@ -197,16 +196,16 @@ client.on('interactionCreate', async interaction => {
         }
 
         // 2. STEP 1: QUEUE CHOICE (Main or Reserve)
-        if (interaction.customId.startsWith('signup_')) {
+        // CHANGED: Now looks for 'choice_' to match your !open commands
+        if (interaction.customId.startsWith('choice_')) {
             if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
             
-            const boss = interaction.customId.replace('signup_', '');
+            const boss = interaction.customId.replace('choice_', '');
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`queue_MAIN_${boss}`).setLabel('Main Team').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
                 new ButtonBuilder().setCustomId(`queue_LAST_RESORT_${boss}`).setLabel('Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
             );
 
-            // Use reply for the very first interaction from the channel button
             return interaction.reply({ 
                 content: `Signing up for **${boss}**. Are you aiming for the Main Team or acting as a Last Resort Reserve?`, 
                 components: [row], 
@@ -217,7 +216,7 @@ client.on('interactionCreate', async interaction => {
         // 3. STEP 2: MESSAGE CHOICE (Manual or Lazy)
         if (interaction.customId.startsWith('queue_')) {
             const parts = interaction.customId.split('_');
-            const qType = parts[1];
+            const qType = parts[1]; // MAIN or LAST_RESORT
             const boss = parts[2];
             
             const row = new ActionRowBuilder().addComponents(
@@ -225,9 +224,9 @@ client.on('interactionCreate', async interaction => {
                 new ButtonBuilder().setCustomId(`mode_lazy_${qType}_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
             );
             
-            // Critical: Update the existing ephemeral message
+            // Use .update to transform the existing ephemeral message
             return interaction.update({ 
-                content: `Selected Queue: **${qType}**. How will you address the Queen?`, 
+                content: `Selected Queue: **${qType.replace('_', ' ')}**. How will you address the Queen?`, 
                 components: [row] 
             });
         }
@@ -235,7 +234,7 @@ client.on('interactionCreate', async interaction => {
         // 4. STEP 3: MODAL TRIGGER
         if (interaction.customId.startsWith('mode_')) {
             const parts = interaction.customId.split('_');
-            const mode = parts[1];
+            const mode = parts[1]; // manual or lazy
             const qType = parts[2];
             const boss = parts[3];
 
@@ -245,7 +244,7 @@ client.on('interactionCreate', async interaction => {
             
             const nameInput = new TextInputBuilder()
                 .setCustomId('charName')
-                .setLabel("Character Name")
+                .setLabel("Exact Character Name")
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
@@ -302,7 +301,7 @@ client.on('interactionCreate', async interaction => {
             queenMessage = interaction.fields.getTextInputValue('queenMessage');
             if (!queenMessage || queenMessage.trim() === "") {
                 return interaction.reply({ 
-                    content: "❌ **REJECTED:** You chose Manual but left it blank! The Queen demands effort. Try again or use Lazy Option.", 
+                    content: "❌ **REJECTED:** You chose Manual but left it blank! Try again or use Lazy Option.", 
                     ephemeral: true 
                 });
             }
@@ -338,7 +337,6 @@ client.on('interactionCreate', async interaction => {
                 note = `\n*(Public queue: 48h wait)*`;
             }
 
-            // Vocation Mapping Logic
             let vocAbbr = rawVoc; let vocEmoji = '❓';
             if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
