@@ -140,10 +140,22 @@ client.on('messageCreate', message => {
         // Add a footer showing when the public queue opens up
         const timeLeft = Math.max(0, (fortyEightHours - (Date.now() - firstSignupTime)) / (1000 * 60 * 60));
         rosterEmbed.footer = { 
-            text: windowExpired ? "✅ Public queue is now merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)} hours.` 
+            text: windowExpired ? "✅ Public queue is now merged."\n❌ Need to drop out? Type !dropout` : `🕒 Public queue merges in ${timeLeft.toFixed(1)} hours.\n❌ Need to drop out? Type !dropout` 
         };
 
         message.channel.send({ embeds: [rosterEmbed] });
+    }
+    if (message.content === '!dropout') {
+        const userSignups = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all();
+        
+        if (userSignups.length === 0) {
+            return message.reply("You aren't on the list, Puffin! You can't abandon a raid you haven't joined.");
+        }
+
+        db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(message.author.id);
+        
+        const names = userSignups.map(s => s.character_name).join(', ');
+        message.channel.send(`🏃💨 **THE COWARD'S EXIT:** **${names}** has dropped out of the raid. The queue has moved up!`);
     }
 });
 
