@@ -193,32 +193,6 @@ client.on('interactionCreate', async interaction => {
             const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await response.json();
 
-            if (!data.character?.character?.name) // ---------------------------------------------------------
-// 2. LISTENING FOR BUTTON CLICKS & FORMS
-// ---------------------------------------------------------
-client.on('interactionCreate', async interaction => {
-    if (interaction.isButton()) {
-        if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
-
-        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('Mecha-Puffin Registration');
-        const charNameInput = new TextInputBuilder().setCustomId('charName').setLabel("Exact character name?").setStyle(TextInputStyle.Short).setRequired(true);
-        const queenMessageInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Message for the Queen?").setStyle(TextInputStyle.Paragraph).setRequired(false);
-        
-        modal.addComponents(new ActionRowBuilder().addComponents(charNameInput), new ActionRowBuilder().addComponents(queenMessageInput));
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit()) {
-        const rawName = interaction.fields.getTextInputValue('charName');
-        const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
-        const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
-
-        await interaction.deferReply(); 
-
-        try {
-            const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
-            const data = await response.json();
-
             if (!data.character?.character?.name) return interaction.editReply(`❌ Character **${rawName}** not found.`);
 
             const char = data.character.character;
