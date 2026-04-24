@@ -1,4 +1,5 @@
 // index.js
+const ADMIN_ROLE_ID = '1497345925671026718'; // Replace with your actual Admin/Raid Leader Role ID
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
     ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, 
@@ -115,65 +116,66 @@ const startHypeLoop = (message, raidType) => {
 // ---------------------------------------------------------
 // 1. CHAT COMMANDS
 // ---------------------------------------------------------
-client.on('messageCreate', message => {
+client.on('messageCreate', async message => {
     if (message.author.bot) return;
+
+    // Helper to check for Admin status
+    const isAdmin = message.member?.roles.cache.some(role => role.name === ADMIN_ROLE_NAME);
 
     if (message.content === '!hail') message.reply('HAIL FORTUNA FELIS! 👑');
     if (message.content === '!roster') displayRoster(message.channel);
-    if (message.content === '!clear') { db.prepare('DELETE FROM signups').run(); message.reply('🧹 Roster wiped.'); }
-    if (message.content === '!close') { gatesOpen = false; if (hypeInterval) clearInterval(hypeInterval); message.reply('🛑 Gates Closed.'); }
 
-    if (message.content === '!open dt') {
-        gatesOpen = true;
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
-            new ButtonBuilder().setCustomId('choice_HOD').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
-            new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
-        );
-        message.channel.send({ content: '🚨 **DOUBLE TROUBLE POSTED** 🚨', components: [row] });
-        startHypeLoop(message, 'Double Trouble');
-    }
-
-    if (message.content === '!open feru') {
-        gatesOpen = true;
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
-        );
-        message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨', components: [row] });
-        startHypeLoop(message, 'Ferumbras');
-    }
-
-    if (message.content === '!open reserves') {
-        gatesOpen = true;
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('choice_LASTRESORT').setLabel('Last Resort Reserve').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
-        );
-        message.channel.send({ content: '⚠️ **LAST RESORT SIGNUPS OPEN** ⚠️\nOnly sign up here if you are purely helping fill gaps!', components: [row] });
-    }
-
-    if (message.content.startsWith('!dropout')) {
-        const userId = message.author.id;
-        const args = message.content.split(' ');
-        const targetInput = args.slice(1).join(' ').toUpperCase();
-        const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
-        if (userSignups.length === 0) return message.reply("Not on the list!");
-
-        const signup = userSignups.find(s => targetInput.includes(s.character_name.toUpperCase()) || userSignups.length === 1);
-        if (!signup) return message.reply("Character not found.");
-
-        let finalMsg = "";
-        if ((signup.boss_choice.includes('BOTH')) && (targetInput.includes('LLK') || targetInput.includes('HOD'))) {
-            const part = targetInput.includes('LLK') ? 'LLK' : 'HOD';
-            const remaining = part === 'LLK' ? 'HOD' : 'LLK';
-            const newChoice = signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remaining}` : remaining;
-            db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signup.id);
-            finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped ${part}.`;
-        } else {
-            db.prepare('DELETE FROM signups WHERE id = ?').run(signup.id);
-            finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** fled!`;
+    // --- ADMIN ONLY COMMANDS ---
+    if (isAdmin) {
+        if (message.content === '!open dt') {
+            gatesOpen = true;
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
+                new ButtonBuilder().setCustomId('choice_HOD').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
+                new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
+            );
+            message.channel.send({ content: '🚨 **DOUBLE TROUBLE POSTED** 🚨', components: [row] });
+            startHypeLoop(message, 'Double Trouble');
         }
-        message.channel.send(finalMsg);
-        displayRoster(message.channel);
+
+        if (message.content === '!open feru') {
+            gatesOpen = true;
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
+            );
+            message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨', components: [row] });
+            startHypeLoop(message, 'Ferumbras');
+        }
+
+        if (message.content === '!close') {
+            gatesOpen = false;
+            if (hypeInterval) clearInterval(hypeInterval);
+            message.reply('🛑 **The gates are now CLOSED.**');
+        }
+
+        if (message.content === '!clear') {
+            db.prepare('DELETE FROM signups').run();
+            message.reply('🧹 **Roster wiped clean!**');
+        }
+
+        // NEW: !remove [Character Name]
+        if (message.content.startsWith('!remove ')) {
+            const charName = message.content.replace('!remove ', '').trim();
+            const info = db.prepare('DELETE FROM signups WHERE LOWER(character_name) = LOWER(?)').run(charName);
+            
+            if (info.changes > 0) {
+                message.reply(`🗑️ **Removed:** **${charName}** has been purged from the roster by the Gatekeeper.`);
+                displayRoster(message.channel);
+            } else {
+                message.reply(`❓ I couldn't find a character named **${charName}** on the current roster.`);
+            }
+        }
+    } else {
+        // Optional: Let them know they aren't authorized for sensitive commands
+        const adminCmds = ['!open', '!close', '!clear', '!remove'];
+        if (adminCmds.some(cmd => message.content.startsWith(cmd))) {
+            return message.reply("⛔ **Access Denied:** You do not have the royal authority to pull these levers.");
+        }
     }
 });
 
