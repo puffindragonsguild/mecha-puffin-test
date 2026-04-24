@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const messages = require('./messages.js');
 const db = require('./database.js'); 
 
@@ -7,57 +7,113 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
+// A simple switch to control if the bot accepts sign-ups
+let gatesOpen = false;
+
 client.once('ready', () => {
     console.log('🤖 Mecha-Puffin Test Engine is ONLINE!');
 });
 
+// ---------------------------------------------------------
+// 1. LISTENING FOR CHAT COMMANDS
+// ---------------------------------------------------------
 client.on('messageCreate', message => {
-    // Ignore messages from bots
     if (message.author.bot) return;
 
-    // Your custom hail command!
     if (message.content === '!hail') {
-        const randomHail = messages.getRandom(messages.leaderHype);
-        message.reply(randomHail);    
+        message.reply('HAIL FORTUNA FELIS! 👑');
     }
 
-    // The monk roast test
-    if (message.content === '!roastmonk') {
-        const randomRoast = messages.getRandom(messages.monkRoasts);
-        message.reply(randomRoast);
+    // Command to CLOSE the gates
+    if (message.content === '!close') {
+        gatesOpen = false;
+        message.reply('🛑 **The gates are now CLOSED.** The Mecha-Puffin is resting.');
     }
 
-    // NEW: The command to spawn the sign-up buttons
-    if (message.content === '!openraid') {
-        // 1. Build the individual buttons
-        const llkButton = new ButtonBuilder()
-            .setCustomId('signup_llk')
-            .setLabel('Sign Up: LLK')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('⚔️');
+    // Command to OPEN Double Trouble (LLK & HoD)
+    if (message.content === '!open dt') {
+        gatesOpen = true;
+        const llkBtn = new ButtonBuilder().setCustomId('signup_llk').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️');
+        const hodBtn = new ButtonBuilder().setCustomId('signup_hod').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️');
+        const bothBtn = new ButtonBuilder().setCustomId('signup_both').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥');
+        
+        const row = new ActionRowBuilder().addComponents(llkBtn, hodBtn, bothBtn);
+        message.channel.send({ content: '🚨 **DOUBLE TROUBLE POSTED** 🚨\nThe Gates are OPEN! Click below to sign up.', components: [row] });
+    }
 
-        const hodButton = new ButtonBuilder()
-            .setCustomId('signup_hod')
-            .setLabel('Sign Up: HoD')
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('🛡️');
-
-        const bothButton = new ButtonBuilder()
-            .setCustomId('signup_both')
-            .setLabel('Sign Up: Both')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('🔥');
-
-        // 2. Pack them into a row
-        const row = new ActionRowBuilder()
-            .addComponents(llkButton, hodButton, bothButton);
-
-        // 3. Send the message with the buttons attached
-        message.channel.send({ 
-            content: '🚨 **NEW RAID POSTED** 🚨\nThe Mecha-Puffin is accepting sign-ups. Click a button below!', 
-            components: [row] 
-        });
+    // Command to OPEN Ferumbras
+    if (message.content === '!open feru') {
+        gatesOpen = true;
+        const feruBtn = new ButtonBuilder().setCustomId('signup_feru').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️');
+        
+        const row = new ActionRowBuilder().addComponents(feruBtn);
+        message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨\nThe Gates are OPEN! Click below to sign up.', components: [row] });
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// ---------------------------------------------------------
+// 2. LISTENING FOR BUTTON CLICKS & FORMS
+// ---------------------------------------------------------
+client.on('interactionCreate', async interaction => {
+    
+    // --- IF SOMEONE CLICKS A BUTTON ---
+    if (interaction.isButton()) {
+        // Check if the gates are closed first!
+        if (!gatesOpen) {
+            // "ephemeral: true" means ONLY the person who clicked sees this message
+            return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
+        }
+
+        // Build the Popup Form (Modal)
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_${interaction.customId}`) // We pass the button ID (e.g., signup_llk) into the modal ID
+            .setTitle('Mecha-Puffin Registration');
+
+        // Create the Text Input for Character Name
+        const charNameInput = new TextInputBuilder()
+            .setCustomId('charName')
+            .setLabel("What is your character's name?")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        // Create the Text Input for Vocation
+        const vocInput = new TextInputBuilder()
+            .setCustomId('vocation')
+            .setLabel("What is your vocation? (EK, ED, MS, RP)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        // Add inputs to the modal (each input needs its own ActionRow)
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(charNameInput),
+            new ActionRowBuilder().addComponents(vocInput)
+        );
+
+        // Show the form to the user
+        await interaction.showModal(modal);
+    }
+
+    // --- IF SOMEONE SUBMITS THE POPUP FORM ---
+    if (interaction.isModalSubmit()) {
+        // Extract their answers
+        const charName = interaction.fields.getTextInputValue('charName');
+        const vocation = interaction.fields.getTextInputValue('vocation').toUpperCase();
+        
+        // Figure out which boss they chose based on the Modal ID we set earlier
+        const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
+
+        // Check for Monk trolls
+        if (vocation === 'MONK') {
+            const roast = messages.getRandom(messages.monkRoasts);
+            return interaction.reply({ content: roast }); // Publicly roast them!
+        }
+
+        // 💾 SAVE TO SQLITE DATABASE 💾
+        const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice) VALUES (?, ?, ?, ?)');
+        stmt.run(interaction.user.id, charName, vocation, bossChoice);
+
+        // Announce their successful sign-up to the channel!
+        const hype = messages.getRandom(messages.standardHype);
+        await interaction.reply(`✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`);
+    }
+});
