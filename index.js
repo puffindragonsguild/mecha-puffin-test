@@ -275,7 +275,7 @@ client.on('interactionCreate', async interaction => {
             queenMessage = messages.getRandom(messages.lazyQueenMessages);
         }
 
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await interaction.deferReply();
         try {
             const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await res.json();
