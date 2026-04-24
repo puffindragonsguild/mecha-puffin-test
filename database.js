@@ -32,6 +32,9 @@ try {
     db.prepare('ALTER TABLE signups ADD COLUMN level INTEGER').run();
     console.log("💾 Database upgraded: Added 'level' column.");
 } catch (err) {}
+try {
+    db.prepare('ALTER TABLE signups ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP').run();
+} catch (err) {}
 
 console.log("💾 Mecha-Puffin Memory Banks: ONLINE");
 
