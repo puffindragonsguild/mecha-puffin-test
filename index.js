@@ -1,5 +1,9 @@
 // index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
+    ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, 
+    StringSelectMenuBuilder, MessageFlags 
+} = require('discord.js');
 const messages = require('./messages.js');
 const db = require('./database.js'); 
 
@@ -10,7 +14,8 @@ const client = new Client({
 let gatesOpen = false;
 let hypeInterval; 
 
-client.once('ready', () => {
+// ✅ FIX 1: Rename 'ready' to 'clientReady' per deprecation warning
+client.once('clientReady', () => {
     console.log('🤖 Mecha-Puffin Test Engine is ONLINE!');
 });
 
@@ -30,12 +35,12 @@ async function displayRoster(target) {
     
     if (currentBosses.some(b => b.includes('LLK') || b.includes('HOD') || b.includes('BOTH'))) {
         row.addComponents(
-            new ButtonBuilder().setCustomId('signup_llk').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
-            new ButtonBuilder().setCustomId('signup_hod').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
-            new ButtonBuilder().setCustomId('signup_both').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
+            new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
+            new ButtonBuilder().setCustomId('choice_HOD').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
+            new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
         );
     } else if (currentBosses.some(b => b.includes('FERU'))) {
-        row.addComponents(new ButtonBuilder().setCustomId('signup_feru').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️'));
+        row.addComponents(new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️'));
     }
     row.addComponents(new ButtonBuilder().setCustomId('dropout_btn').setLabel('Drop Out').setStyle(ButtonStyle.Secondary).setEmoji('🏃'));
 
@@ -45,7 +50,6 @@ async function displayRoster(target) {
         );
 
         if (players.length > 0) {
-            // Priority: Puffins -> Public -> LAST_RESORT
             let mainList = windowExpired ? players.filter(p => p.boss_choice !== 'LAST_RESORT') : players.filter(p => !p.boss_choice.startsWith('PUBLIC_') && p.boss_choice !== 'LAST_RESORT');
             let publicQueue = windowExpired ? [] : players.filter(p => p.boss_choice.startsWith('PUBLIC_'));
             let lastResorts = players.filter(p => p.boss_choice === 'LAST_RESORT');
@@ -158,27 +162,19 @@ client.on('messageCreate', message => {
         message.channel.send(finalMsg);
         displayRoster(message.channel);
     }
-
-    if (message.content.startsWith('!whitelist')) {
-        const args = message.content.split(' ');
-        const name = args.slice(2).join(' ');
-        if (args[1] === 'add') { db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name); message.reply(`✅ Whitelisted ${name}`); }
-        else { db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name); message.reply(`🗑️ Removed ${name}`); }
-    }
 });
 
 // ---------------------------------------------------------
-// 2. INTERACTIONS (The Brain)
+// 2. INTERACTIONS
 // ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     
     if (interaction.isButton()) {
-        
-        // 1. DROPOUT BUTTON HANDLER
+        // --- DROPOUT BUTTON ---
         if (interaction.customId === 'dropout_btn') {
             const userId = interaction.user.id;
             const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
-            if (userSignups.length === 0) return interaction.reply({ content: "Not on the list!", ephemeral: true });
+            if (userSignups.length === 0) return interaction.reply({ content: "Not on the list!", flags: MessageFlags.Ephemeral });
             
             const selectMenu = new StringSelectMenuBuilder().setCustomId('dropout_select').setPlaceholder('Select exit...');
             userSignups.forEach(s => {
@@ -192,13 +188,12 @@ client.on('interactionCreate', async interaction => {
                     selectMenu.addOptions({ label: `${s.character_name} (${s.boss_choice.replace('PUBLIC_', '')})`, value: `drop_full_${s.boss_choice}_${s.id}` });
                 }
             });
-            return interaction.reply({ content: "Choose your exit:", components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true });
+            return interaction.reply({ content: "Choose your exit:", components: [new ActionRowBuilder().addComponents(selectMenu)], flags: MessageFlags.Ephemeral });
         }
 
-        // 2. STEP 1: QUEUE CHOICE (Main or Reserve)
-        // CHANGED: Now looks for 'choice_' to match your !open commands
+        // --- STEP 1: QUEUE CHOICE ---
         if (interaction.customId.startsWith('choice_')) {
-            if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
+            if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), flags: MessageFlags.Ephemeral });
             
             const boss = interaction.customId.replace('choice_', '');
             const row = new ActionRowBuilder().addComponents(
@@ -207,58 +202,39 @@ client.on('interactionCreate', async interaction => {
             );
 
             return interaction.reply({ 
-                content: `Signing up for **${boss}**. Are you aiming for the Main Team or acting as a Last Resort Reserve?`, 
+                content: `Signing up for **${boss}**. Choose your status:`, 
                 components: [row], 
-                ephemeral: true 
+                flags: MessageFlags.Ephemeral 
             });
         }
 
-        // 3. STEP 2: MESSAGE CHOICE (Manual or Lazy)
+        // --- STEP 2: MESSAGE CHOICE ---
         if (interaction.customId.startsWith('queue_')) {
-            const parts = interaction.customId.split('_');
-            const qType = parts[1]; // MAIN or LAST_RESORT
-            const boss = parts[2];
-            
+            const [_, qType, boss] = interaction.customId.split('_');
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`mode_manual_${qType}_${boss}`).setLabel('Manual Message').setStyle(ButtonStyle.Primary).setEmoji('✍️'),
                 new ButtonBuilder().setCustomId(`mode_lazy_${qType}_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
             );
             
-            // Use .update to transform the existing ephemeral message
+            // ✅ FIX: Use .update() instead of .reply() for ephemeral steps
             return interaction.update({ 
-                content: `Selected Queue: **${qType.replace('_', ' ')}**. How will you address the Queen?`, 
+                content: `Selected Queue: **${qType}**. How will you address the Queen?`, 
                 components: [row] 
             });
         }
 
-        // 4. STEP 3: MODAL TRIGGER
+        // --- STEP 3: MODAL ---
         if (interaction.customId.startsWith('mode_')) {
-            const parts = interaction.customId.split('_');
-            const mode = parts[1]; // manual or lazy
-            const qType = parts[2];
-            const boss = parts[3];
-
-            const modal = new ModalBuilder()
-                .setCustomId(`modal_${mode}_${qType}_${boss}`)
-                .setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
+            const [_, mode, qType, boss] = interaction.customId.split('_');
+            const modal = new ModalBuilder().setCustomId(`modal_${mode}_${qType}_${boss}`).setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
             
-            const nameInput = new TextInputBuilder()
-                .setCustomId('charName')
-                .setLabel("Exact Character Name")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-
+            const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Character Name").setStyle(TextInputStyle.Short).setRequired(true);
             const rows = [new ActionRowBuilder().addComponents(nameInput)];
             
             if (mode === 'manual') {
-                const msgInput = new TextInputBuilder()
-                    .setCustomId('queenMessage')
-                    .setLabel("Your Message (REQUIRED)")
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(false);
+                const msgInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Your Message (REQUIRED)").setStyle(TextInputStyle.Paragraph).setRequired(false);
                 rows.push(new ActionRowBuilder().addComponents(msgInput));
             }
-            
             modal.addComponents(...rows);
             await interaction.showModal(modal);
         }
@@ -267,10 +243,7 @@ client.on('interactionCreate', async interaction => {
     // --- B. DROPDOWN PROCESSOR ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
         const parts = interaction.values[0].split('_');
-        const action = parts[1]; 
-        const type = parts[2]; 
-        const signupId = parts[parts.length - 1];
-
+        const action = parts[1]; const type = parts[2]; const signupId = parts[parts.length - 1];
         const signup = db.prepare('SELECT * FROM signups WHERE id = ?').get(signupId);
         if (!signup) return interaction.update({ content: "Error: Not found.", components: [] });
 
@@ -283,44 +256,33 @@ client.on('interactionCreate', async interaction => {
             db.prepare('DELETE FROM signups WHERE id = ?').run(signupId);
             interaction.channel.send(`🏃💨 **ABANDONMENT:** **${signup.character_name}** fled.`);
         }
-        await interaction.update({ content: "Processed successfully.", components: [] });
+        await interaction.update({ content: "Processed.", components: [] });
         displayRoster(interaction.channel);
     }
 
-    // --- C. FINAL SIGNUP PROCESSOR ---
+    // --- C. FINAL SIGNUP ---
     if (interaction.isModalSubmit()) {
-        const parts = interaction.customId.split('_');
-        const mode = parts[1];
-        const qType = parts[2];
-        const bossChoice = parts[3];
-
+        const [_, mode, qType, bossChoice] = interaction.customId.split('_');
         const rawName = interaction.fields.getTextInputValue('charName');
         let queenMessage = "";
 
         if (mode === 'manual') {
             queenMessage = interaction.fields.getTextInputValue('queenMessage');
             if (!queenMessage || queenMessage.trim() === "") {
-                return interaction.reply({ 
-                    content: "❌ **REJECTED:** You chose Manual but left it blank! Try again or use Lazy Option.", 
-                    ephemeral: true 
-                });
+                return interaction.reply({ content: "❌ **REJECTED:** Message required for Manual mode.", flags: MessageFlags.Ephemeral });
             }
         } else {
             queenMessage = messages.getRandom(messages.lazyQueenMessages);
         }
 
-        await interaction.deferReply();
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
             const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await res.json();
-            
             if (!data.character?.character?.name) return interaction.editReply(`❌ **${rawName}** not found.`);
             
             const char = data.character.character;
-            const charName = char.name; 
-            const charLevel = char.level; 
-            const rawVoc = char.vocation.toUpperCase();
-            
+            const charName = char.name; const charLevel = char.level; const rawVoc = char.vocation.toUpperCase();
             if (rawVoc === 'NONE') return interaction.editReply(`❌ Rookgaardian detected.`);
 
             if (db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName)) {
@@ -337,6 +299,7 @@ client.on('interactionCreate', async interaction => {
                 note = `\n*(Public queue: 48h wait)*`;
             }
 
+            // Vocation Mapper
             let vocAbbr = rawVoc; let vocEmoji = '❓';
             if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
@@ -354,10 +317,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: replyText });
             await displayRoster(interaction.channel);
-        } catch (e) { 
-            console.error(e); 
-            await interaction.editReply("⚠️ API Error connecting to TibiaData."); 
-        }
+        } catch (e) { console.error(e); await interaction.editReply("⚠️ API Error."); }
     }
 });
 
