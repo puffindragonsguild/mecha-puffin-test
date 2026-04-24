@@ -35,4 +35,13 @@ try {
 
 console.log("💾 Mecha-Puffin Memory Banks: ONLINE");
 
+// Create the Whitelist table
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS whitelist (
+        char_name TEXT PRIMARY KEY
+    )
+`).run();
+
+console.log("💾 Whitelist Memory Banks: ONLINE");
+
 module.exports = db;
