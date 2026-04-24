@@ -59,7 +59,8 @@ client.on('messageCreate', message => {
     }
     // Command to view the roster
     if (message.content === '!roster') {
-        const signups = db.prepare('SELECT character_name, vocation, boss_choice FROM signups').all();
+        // ORDER BY id ASC ensures perfect first-come, first-served fairness!
+        const signups = db.prepare('SELECT character_name, vocation, boss_choice FROM signups ORDER BY id ASC').all();
 
         if (signups.length === 0) {
             return message.reply("📭 **The roster is empty!** No one has braved the gates yet.");
@@ -72,28 +73,37 @@ client.on('messageCreate', message => {
             fields: []
         };
 
-        // 1. Filter players into their specific teams (handling 'BOTH' smartly)
+        // ⚙️ THE OVER-SUBSCRIPTION LIMIT ⚙️
+        const maxPlayers = 15; // You can change this if your raids have a different cap!
+
+        // 1. Filter players into their specific teams
         const llkPlayers = signups.filter(p => p.boss_choice === 'LLK' || p.boss_choice === 'BOTH');
         const hodPlayers = signups.filter(p => p.boss_choice === 'HOD' || p.boss_choice === 'BOTH');
         const feruPlayers = signups.filter(p => p.boss_choice === 'FERU');
 
-        // 2. Build the LLK Field if it has players
-        if (llkPlayers.length > 0) {
-            const list = llkPlayers.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
-            rosterEmbed.fields.push({ name: `⚔️ LLK TEAM (${llkPlayers.length})`, value: list, inline: false });
-        }
+        // 2. A neat little helper to build Main Teams and Reserves automatically
+        const addTeamToEmbed = (teamName, emoji, players) => {
+            if (players.length > 0) {
+                // Slice the list: 0 to maxPlayers is Main, everything after is Reserves
+                const mainTeam = players.slice(0, maxPlayers);
+                const reserves = players.slice(maxPlayers);
 
-        // 3. Build the HoD Field if it has players
-        if (hodPlayers.length > 0) {
-            const list = hodPlayers.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
-            rosterEmbed.fields.push({ name: `🛡️ HoD TEAM (${hodPlayers.length})`, value: list, inline: false });
-        }
+                // Build the Main Team block
+                const mainList = mainTeam.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+                rosterEmbed.fields.push({ name: `${emoji} ${teamName} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainList, inline: false });
 
-        // 4. Build the Feru Field if it has players
-        if (feruPlayers.length > 0) {
-            const list = feruPlayers.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
-            rosterEmbed.fields.push({ name: `🧙‍♂️ FERUMBRAS TEAM (${feruPlayers.length})`, value: list, inline: false });
-        }
+                // If there are reserves, build a separate Reserve block right underneath it
+                if (reserves.length > 0) {
+                    const reserveList = reserves.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+                    rosterEmbed.fields.push({ name: `⏳ ${teamName} RESERVES (${reserves.length})`, value: reserveList, inline: false });
+                }
+            }
+        };
+
+        // 3. Assemble the masterpiece
+        addTeamToEmbed('LLK', '⚔️', llkPlayers);
+        addTeamToEmbed('HoD', '🛡️', hodPlayers);
+        addTeamToEmbed('FERUMBRAS', '🧙‍♂️', feruPlayers);
 
         message.channel.send({ embeds: [rosterEmbed] });
     }
