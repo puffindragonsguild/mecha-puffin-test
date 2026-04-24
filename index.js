@@ -19,6 +19,7 @@ client.on('messageCreate', message => {
         // The bot fetches a random roast from messages.js
         const randomRoast = messages.getRandom(messages.monkRoasts);
         message.reply(randomRoast);
+    }    
     if (message.content === '!hail') {
         // The bot fetches a random hail from messages.js
         const randomHail = messages.getRandom(messages.leaderHype);
