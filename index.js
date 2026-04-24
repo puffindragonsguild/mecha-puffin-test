@@ -1,5 +1,5 @@
 // index.js
-const ADMIN_ROLE_NAME = "Bot Admin"; // 👈 Change this to your exact Discord Role name
+const ADMIN_ROLE_NAME = "Bot Admin"; 
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
     ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, 
@@ -16,7 +16,7 @@ let gatesOpen = false;
 let hypeInterval; 
 
 client.once('clientReady', () => {
-    console.log('🤖 Mecha-Puffin Test Engine is ONLINE!');
+    console.log('🤖 Mecha-Puffin Engine is ONLINE!');
 });
 
 // --- REUSABLE ROSTER FUNCTION ---
@@ -110,28 +110,28 @@ const startHypeLoop = (message, raidType) => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // ✅ ADMIN CHECK
     const isAdmin = message.member?.roles.cache.some(role => role.name === ADMIN_ROLE_NAME);
 
     if (message.content === '!hail') message.reply('HAIL FORTUNA FELIS! 👑');
     if (message.content === '!roster') displayRoster(message.channel);
-    if (message.content === '!announce') {
-            const announceEmbed = {
-                title: "📜 ROYAL PROCLAMATION: THE HAND OF THE QUEEN HAS ARRIVED!",
-                color: 0xffd700, // Royal Gold
-                description: "### Hear ye! Hear ye!\n\nBy decree of her majesty, **Fortuna Felis**, the PuffinBot is now officially online! 🤖⚔️\n\nOur raid sign-up system has been upgraded with royal precision. Whether you seek the Main Team or offer your strength as a Reserv, the Queen's ledger is ready to record your name.",
-                fields: [
-                    { name: "🛡️ How to Join", value: "Click the boss buttons below to start your registration. You will be asked for your status and a personal message for the Queen." },
-                    { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option message, but be warned the Queen may not approve!" },
-                    { name: "🏃 Dropping Out", value: "Should cowardice take hold, use the 'Drop Out' button or type `!dropout`." }
-                ],
-                footer: { text: "👑 Long live the Queen! | Powered by PuffinBot" }
-            };
 
-            await message.channel.send({ embeds: [announceEmbed] });
-
-    // --- ADMIN ONLY COMMANDS ---
     if (isAdmin) {
+        if (message.content === '!announce') {
+            const announceEmbed = {
+                title: "📜 ROYAL PROCLAMATION: THE GATES ARE OPEN!",
+                color: 0xffd700, 
+                description: "### Hear ye! Hear ye!\n\nBy decree of her majesty, **Fortuna Felis**, the Puffin Engine is now online! 🤖⚔️\n\nOur raid sign-up system has been upgraded. Whether you seek the Main Team or offer strength as a Last Resort, the Queen's ledger is ready to record your name.",
+                fields: [
+                    { name: "🛡️ How to Join", value: "Click the boss buttons below to start. You will be asked for your status and a message for the Queen." },
+                    { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option, but be warned—the bot's snark is sharp!" },
+                    { name: "🏃 Dropping Out", value: "Use the 'Drop Out' button or type `!dropout`." }
+                ],
+                footer: { text: "👑 Long live the Queen!" }
+            };
+            await message.channel.send({ embeds: [announceEmbed] });
+            message.delete().catch(() => {});
+        }
+
         if (message.content === '!open dt') {
             gatesOpen = true;
             const row = new ActionRowBuilder().addComponents(
@@ -171,22 +171,19 @@ client.on('messageCreate', async message => {
             message.reply('🧹 **Roster wiped clean!**');
         }
 
-        // ✅ THE WHITELIST COMMANDS
         if (message.content.startsWith('!whitelist ')) {
             const args = message.content.split(' ');
-            const action = args[1]; // add or remove
+            const action = args[1];
             const name = args.slice(2).join(' ');
-
             if (action === 'add') {
                 db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name);
-                message.reply(`✅ **${name}** added to Whitelist. They will now be treated as a Puffin!`);
+                message.reply(`✅ **${name}** added to Whitelist.`);
             } else if (action === 'remove') {
                 db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name);
-                message.reply(`🗑️ **${name}** removed from Whitelist.`);
+                message.reply(`🗑️ **${name}** removed.`);
             }
         }
 
-        // ✅ THE REMOVE COMMAND
         if (message.content.startsWith('!remove ')) {
             const charName = message.content.replace('!remove ', '').trim();
             const info = db.prepare('DELETE FROM signups WHERE LOWER(character_name) = LOWER(?)').run(charName);
@@ -196,11 +193,6 @@ client.on('messageCreate', async message => {
             } else {
                 message.reply(`❓ Character **${charName}** not found.`);
             }
-        }
-    } else {
-        const adminCmds = ['!open', '!close', '!clear', '!remove', '!whitelist'];
-        if (adminCmds.some(cmd => message.content.startsWith(cmd))) {
-            return message.reply("⛔ **Access Denied:** You do not have royal authority.");
         }
     }
 });
@@ -308,7 +300,6 @@ client.on('interactionCreate', async interaction => {
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, `${vocEmoji} ${vocAbbr}`, charLevel, finalChoice, queenMessage);
 
-            // ✅ ROYAL HYPE LOGIC
             let hypeLine = messages.getRandom(messages.standardHype);
             if (charName === "Fortuna Felis") hypeLine = messages.getRandom(messages.leaderHype);
 
