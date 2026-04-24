@@ -59,8 +59,8 @@ client.on('messageCreate', message => {
     }
     // Command to view the roster
     if (message.content === '!roster') {
-        // ORDER BY id ASC ensures perfect first-come, first-served fairness!
-        const signups = db.prepare('SELECT character_name, vocation, boss_choice FROM signups ORDER BY id ASC').all();
+        // Grab the data, now explicitly asking for the 'level' column
+        const signups = db.prepare('SELECT character_name, vocation, level, boss_choice FROM signups ORDER BY id ASC').all();
 
         if (signups.length === 0) {
             return message.reply("📭 **The roster is empty!** No one has braved the gates yet.");
@@ -73,34 +73,28 @@ client.on('messageCreate', message => {
             fields: []
         };
 
-        // ⚙️ THE OVER-SUBSCRIPTION LIMIT ⚙️
-        const maxPlayers = 15; // You can change this if your raids have a different cap!
+        const maxPlayers = 15; 
 
-        // 1. Filter players into their specific teams
         const llkPlayers = signups.filter(p => p.boss_choice === 'LLK' || p.boss_choice === 'BOTH');
         const hodPlayers = signups.filter(p => p.boss_choice === 'HOD' || p.boss_choice === 'BOTH');
         const feruPlayers = signups.filter(p => p.boss_choice === 'FERU');
 
-        // 2. A neat little helper to build Main Teams and Reserves automatically
-        const addTeamToEmbed = (teamName, emoji, players) => {
+        const addTeamToEmbed = (teamName, teamEmoji, players) => {
             if (players.length > 0) {
-                // Slice the list: 0 to maxPlayers is Main, everything after is Reserves
                 const mainTeam = players.slice(0, maxPlayers);
                 const reserves = players.slice(maxPlayers);
 
-                // Build the Main Team block
-                const mainList = mainTeam.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
-                rosterEmbed.fields.push({ name: `${emoji} ${teamName} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainList, inline: false });
+                // Formats as: • CharacterName [Lvl 500] (🛡️ EK)
+                const mainList = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                rosterEmbed.fields.push({ name: `${teamEmoji} ${teamName} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainList, inline: false });
 
-                // If there are reserves, build a separate Reserve block right underneath it
                 if (reserves.length > 0) {
-                    const reserveList = reserves.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+                    const reserveList = reserves.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
                     rosterEmbed.fields.push({ name: `⏳ ${teamName} RESERVES (${reserves.length})`, value: reserveList, inline: false });
                 }
             }
         };
 
-        // 3. Assemble the masterpiece
         addTeamToEmbed('LLK', '⚔️', llkPlayers);
         addTeamToEmbed('HoD', '🛡️', hodPlayers);
         addTeamToEmbed('FERUMBRAS', '🧙‍♂️', feruPlayers);
@@ -109,9 +103,6 @@ client.on('messageCreate', message => {
     }
 });
 
-// ---------------------------------------------------------
-// 2. LISTENING FOR BUTTON CLICKS & FORMS
-// ---------------------------------------------------------
 // ---------------------------------------------------------
 // 2. LISTENING FOR BUTTON CLICKS & FORMS
 // ---------------------------------------------------------
@@ -153,7 +144,6 @@ client.on('interactionCreate', async interaction => {
         const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
         const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
 
-        // ⏱️ Tell Discord to "hold on" while we check the API
         await interaction.deferReply(); 
 
         try {
@@ -161,45 +151,53 @@ client.on('interactionCreate', async interaction => {
             const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await response.json();
 
-            // 🛑 GHOST CHECK: Does the character exist?
             if (!data.character || !data.character.character || data.character.character.name === "") {
                 return interaction.editReply(`❌ **Access Denied:** The character **${rawName}** does not exist. The Gatekeeper refuses you!`);
             }
 
             const charName = data.character.character.name; 
-            const vocation = data.character.character.vocation.toUpperCase();
+            const rawVocation = data.character.character.vocation.toUpperCase();
+            const charLevel = data.character.character.level; // 📈 NEW: Grab the level!
 
-            // 🛑 ROOKGAARD CHECK: Are they still on the tutorial island?
-            if (vocation === 'NONE') {
-                return interaction.editReply(`❌ **Access Denied:** **${charName}** is still on Rookgaard! The Mecha-Puffin only accepts mainlanders. Go see the Oracle!`);
+            if (rawVocation === 'NONE') {
+                return interaction.editReply(`❌ **Access Denied:** **${charName}** is still on Rookgaard! The Mecha-Puffin only accepts mainlanders.`);
             }
 
-            // 💾 SAVE TO SQLITE DATABASE
-            const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?)');
-            stmt.run(interaction.user.id, charName, vocation, bossChoice, queenMessage);
+            // 🎨 NEW: The Vocation Emoji Mapper
+            let vocAbbr = rawVocation;
+            let vocEmoji = '❓';
+            
+            if (rawVocation.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
+            else if (rawVocation.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
+            else if (rawVocation.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
+            else if (rawVocation.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
+            else if (rawVocation.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
+
+            const formattedVoc = `${vocEmoji} ${vocAbbr}`; // Example: "🛡️ EK"
+
+            // 💾 SAVE TO SQLITE DATABASE (Now with LEVEL!)
+            const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)');
+            stmt.run(interaction.user.id, charName, formattedVoc, charLevel, bossChoice, queenMessage);
 
             let replyText = "";
             
-            // 🤡 THE MONK ROAST (Restored!)
-            if (vocation === 'MONK' || vocation === 'EXALTED MONK') {
+            if (rawVocation.includes('MONK')) {
                 const roast = messages.getRandom(messages.monkRoasts);
-                replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** (${vocation}) [Signed up for: ${bossChoice}]`;
+                replyText = `${roast}\n*But fine, you are on the list...* ✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) [Signed up for: ${bossChoice}]`;
             } else {
-                // Standard Hype Announcement
                 const hype = messages.getRandom(messages.standardHype);
-                replyText = `✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`;
+                replyText = `✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${hype} [Signed up for: ${bossChoice}]`;
             }
 
             if (queenMessage.trim() !== "") {
                 replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
             }
 
-            // Send the final official announcement
             await interaction.editReply({ content: replyText });
 
         } catch (error) {
             console.error("API Error:", error);
-            await interaction.editReply("⚠️ **System Failure:** The Mecha-Puffin couldn't reach the Tibia servers. They might be under maintenance!");
+            await interaction.editReply("⚠️ **System Failure:** The Mecha-Puffin couldn't reach the Tibia servers.");
         }
     }
 }); // <--- This was the culprit! The missing closing brackets.
