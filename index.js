@@ -164,6 +164,7 @@ client.on('interactionCreate', async interaction => {
         const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?)');
         stmt.run(interaction.user.id, charName, vocation, bossChoice, queenMessage);
 
+        // Figure out what the bot should say
         let replyText = "";
         
         if (vocation === 'MONK') {
@@ -174,6 +175,12 @@ client.on('interactionCreate', async interaction => {
             replyText = `✅ **${charName}** (${vocation}) ${hype} [Signed up for: ${bossChoice}]`;
         }
 
+        // 💌 NEW: Attach the Queen's message to the announcement if they wrote one!
+        if (queenMessage.trim() !== "") {
+            replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
+        }
+
+        // Send the final message to the channel
         await interaction.reply({ content: replyText });
     }
 }); // <--- This was the culprit! The missing closing brackets.
