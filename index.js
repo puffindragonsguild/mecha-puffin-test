@@ -18,12 +18,14 @@ client.once('ready', () => {
 // 1. LISTENING FOR CHAT COMMANDS
 // ---------------------------------------------------------
 client.on('messageCreate', message => {
+    // NEW WIRETAP LINE: Print what the bot hears to the Railway logs
+    console.log(`[LOG] I heard: "${message.content}" from ${message.author.username}`);
+
     if (message.author.bot) return;
 
     if (message.content === '!hail') {
         message.reply('HAIL FORTUNA FELIS! 👑');
     }
-
     // Command to CLOSE the gates
     if (message.content === '!close') {
         gatesOpen = false;
