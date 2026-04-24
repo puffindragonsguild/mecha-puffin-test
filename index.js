@@ -122,7 +122,7 @@ client.on('messageCreate', async message => {
                 description: "### Hear ye! Hear ye!\n\nBy decree of her majesty, **Fortuna Felis**, the PuffinBot is now officially online! 🤖⚔️\n\nOur raid sign-up system has been upgraded with royal precision. Whether you seek the Main Team or offer your strength as a Reserv, the Queen's ledger is ready to record your name.",
                 fields: [
                     { name: "🛡️ How to Join", value: "Click the boss buttons below to start your registration. You will be asked for your status and a personal message for the Queen." },
-                    { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option, but be warned the Queen may not like it" },
+                    { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option message, but be warned the Queen may not approve!" },
                     { name: "🏃 Dropping Out", value: "Should cowardice take hold, use the 'Drop Out' button or type `!dropout`." }
                 ],
                 footer: { text: "👑 Long live the Queen! | Powered by PuffinBot" }
