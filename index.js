@@ -26,6 +26,30 @@ client.on('messageCreate', message => {
     if (message.content === '!hail') {
         message.reply('HAIL FORTUNA FELIS! 👑');
     }
+
+    // !whitelist add Name / !whitelist remove Name
+    if (message.content.startsWith('!whitelist')) {
+        const args = message.content.split(' ');
+        const action = args[1]; // 'add' or 'remove'
+        const name = args.slice(2).join(' ');
+
+        if (action === 'add') {
+            db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name);
+            message.reply(`✅ **${name}** added to the Puffin Whitelist.`);
+        } else if (action === 'remove') {
+            db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name);
+            message.reply(`🗑️ **${name}** removed from the Whitelist.`);
+        }
+    }
+
+    // Updated !open command with "Reserve Only" option
+    if (message.content === '!open dt reserve') {
+        gatesOpen = true;
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('signup_reserve').setLabel('Sign Up: Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('⏳')
+        );
+        message.channel.send({ content: '⚠️ **RESERVE LIST ONLY** ⚠️\nThe core team is set. Click below to join the backup queue!', components: [row] });
+    }
     // Command to CLOSE the gates
     if (message.content === '!close') {
         gatesOpen = false;
