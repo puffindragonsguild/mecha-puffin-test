@@ -1,6 +1,7 @@
 // index.js
 const { Client, GatewayIntentBits } = require('discord.js');
-const messages = require('./messages.js'); // 👈 Import your new message armory!
+const messages = require('./messages.js');
+const db = require('./database.js'); // 👈 Wakes up the database!
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
