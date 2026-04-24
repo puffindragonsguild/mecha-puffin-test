@@ -118,15 +118,15 @@ client.on('messageCreate', async message => {
     if (isAdmin) {
         if (message.content === '!announce') {
             const announceEmbed = {
-                title: "📜 ROYAL PROCLAMATION: THE GATES ARE OPEN!",
+                title: "📜 ROYAL PROCLAMATION: THE HAND OF THE QUEEN HAS ARRIVED!",
                 color: 0xffd700, 
-                description: "### Hear ye! Hear ye!\n\nBy decree of her majesty, **Fortuna Felis**, the Puffin Engine is now online! 🤖⚔️\n\nOur raid sign-up system has been upgraded. Whether you seek the Main Team or offer strength as a Last Resort, the Queen's ledger is ready to record your name.",
+                description: "### Hear ye! Hear ye!\n\nBy decree of her majesty, **Fortuna Felis**, the PuffinBot is now online! 🤖⚔️\n\nOur raid sign-up system has been upgraded. Whether you seek the Main Team or offer strength as a Last Resort, the Queen's ledger is ready to record your name.",
                 fields: [
                     { name: "🛡️ How to Join", value: "Click the boss buttons below to start. You will be asked for your status and a message for the Queen." },
-                    { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option, but be warned—the bot's snark is sharp!" },
-                    { name: "🏃 Dropping Out", value: "Use the 'Drop Out' button or type `!dropout`." }
+                    { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option message, but be warned the Queen may not approve!" },
+                    { name: "🏃 Dropping Out", value: "Should cowardice take hold, use the 'Drop Out' button or type `!dropout`." }
                 ],
-                footer: { text: "👑 Long live the Queen!" }
+                footer: { text: "👑 Long live the Queen! | Powered by PuffinBot" }
             };
             await message.channel.send({ embeds: [announceEmbed] });
             message.delete().catch(() => {});
@@ -295,7 +295,7 @@ client.on('interactionCreate', async interaction => {
             else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
             else if (rawVoc.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
             else if (rawVoc.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
-            else if (rawVoc.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
+            else if (rawVoc.includes('MONK')) { vocAbbr = 'EM'; vocEmoji = '🥋'; }
 
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, `${vocEmoji} ${vocAbbr}`, charLevel, finalChoice, queenMessage);
