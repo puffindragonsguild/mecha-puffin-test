@@ -1,5 +1,5 @@
 // index.js
-const ADMIN_ROLE_ID = '1497345925671026718'; // Replace with your actual Admin/Raid Leader Role ID
+const ADMIN_ROLE_NAME = "Bot Admin"; // 👈 Change this to your exact Discord Role name
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
     ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, 
@@ -31,10 +31,8 @@ async function displayRoster(target) {
     const windowExpired = (Date.now() - firstSignupTime) > fortyEightHours;
 
     const row = new ActionRowBuilder();
-    // Check for any signups that include boss keywords or BOTH
     const currentBosses = [...new Set(allSignups.map(s => s.boss_choice))];
     
-    // Logic to decide which buttons to show on the roster
     const hasDT = currentBosses.some(b => b.includes('LLK') || b.includes('HOD') || b.includes('BOTH'));
     const hasFeru = currentBosses.some(b => b.includes('FERU'));
 
@@ -50,17 +48,15 @@ async function displayRoster(target) {
     row.addComponents(new ButtonBuilder().setCustomId('dropout_btn').setLabel('Drop Out').setStyle(ButtonStyle.Secondary).setEmoji('🏃'));
 
     const addSection = (name, emoji, key) => {
-        // ✅ FIX: Find players signed up for the boss OR Last Resort
         const players = allSignups.filter(p => 
             p.boss_choice.includes(key) || 
             (p.boss_choice.includes('BOTH') && (key === 'LLK' || key === 'HOD')) ||
-            p.boss_choice === 'LAST_RESORT' // Everyone in Last Resort shows up in every active section
+            p.boss_choice === 'LAST_RESORT'
         );
 
         if (players.length > 0) {
             let lastResorts = players.filter(p => p.boss_choice === 'LAST_RESORT');
             let others = players.filter(p => p.boss_choice !== 'LAST_RESORT');
-
             let mainList = windowExpired ? others : others.filter(p => !p.boss_choice.startsWith('PUBLIC_'));
             let publicQueue = windowExpired ? [] : others.filter(p => p.boss_choice.startsWith('PUBLIC_'));
 
@@ -87,13 +83,8 @@ async function displayRoster(target) {
         }
     };
 
-    if (hasDT) {
-        addSection('LLK', '⚔️', 'LLK');
-        addSection('HoD', '🛡️', 'HOD');
-    }
-    if (hasFeru) {
-        addSection('FERUMBRAS', '🧙‍♂️', 'FERU');
-    }
+    if (hasDT) { addSection('LLK', '⚔️', 'LLK'); addSection('HoD', '🛡️', 'HOD'); }
+    if (hasFeru) { addSection('FERUMBRAS', '🧙‍♂️', 'FERU'); }
 
     const timeLeft = Math.max(0, (fortyEightHours - (Date.now() - firstSignupTime)) / (1000 * 60 * 60));
     rosterEmbed.footer = { 
@@ -119,7 +110,7 @@ const startHypeLoop = (message, raidType) => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // Helper to check for Admin status
+    // ✅ ADMIN CHECK
     const isAdmin = message.member?.roles.cache.some(role => role.name === ADMIN_ROLE_NAME);
 
     if (message.content === '!hail') message.reply('HAIL FORTUNA FELIS! 👑');
@@ -147,6 +138,14 @@ client.on('messageCreate', async message => {
             startHypeLoop(message, 'Ferumbras');
         }
 
+        if (message.content === '!open reserves') {
+            gatesOpen = true;
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('choice_LASTRESORT').setLabel('Last Resort').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
+            );
+            message.channel.send({ content: '⚠️ **RESERVES OPEN** ⚠️', components: [row] });
+        }
+
         if (message.content === '!close') {
             gatesOpen = false;
             if (hypeInterval) clearInterval(hypeInterval);
@@ -158,23 +157,21 @@ client.on('messageCreate', async message => {
             message.reply('🧹 **Roster wiped clean!**');
         }
 
-        // NEW: !remove [Character Name]
+        // ✅ NEW: !remove [Character Name]
         if (message.content.startsWith('!remove ')) {
             const charName = message.content.replace('!remove ', '').trim();
             const info = db.prepare('DELETE FROM signups WHERE LOWER(character_name) = LOWER(?)').run(charName);
-            
             if (info.changes > 0) {
-                message.reply(`🗑️ **Removed:** **${charName}** has been purged from the roster by the Gatekeeper.`);
+                message.reply(`🗑️ **Purged:** **${charName}** has been removed.`);
                 displayRoster(message.channel);
             } else {
-                message.reply(`❓ I couldn't find a character named **${charName}** on the current roster.`);
+                message.reply(`❓ Character **${charName}** not found.`);
             }
         }
     } else {
-        // Optional: Let them know they aren't authorized for sensitive commands
         const adminCmds = ['!open', '!close', '!clear', '!remove'];
         if (adminCmds.some(cmd => message.content.startsWith(cmd))) {
-            return message.reply("⛔ **Access Denied:** You do not have the royal authority to pull these levers.");
+            return message.reply("⛔ **Access Denied:** You do not have royal authority.");
         }
     }
 });
@@ -192,11 +189,7 @@ client.on('interactionCreate', async interaction => {
             const selectMenu = new StringSelectMenuBuilder().setCustomId('dropout_select').setPlaceholder('Select exit...');
             userSignups.forEach(s => {
                 if (s.boss_choice.includes('BOTH')) {
-                    selectMenu.addOptions(
-                        { label: `${s.character_name} (Drop LLK)`, value: `drop_part_LLK_${s.id}` }, 
-                        { label: `${s.character_name} (Drop HoD)`, value: `drop_part_HOD_${s.id}` }, 
-                        { label: `${s.character_name} (Drop All)`, value: `drop_full_BOTH_${s.id}` }
-                    );
+                    selectMenu.addOptions({ label: `${s.character_name} (Drop LLK)`, value: `drop_part_LLK_${s.id}` }, { label: `${s.character_name} (Drop HoD)`, value: `drop_part_HOD_${s.id}` }, { label: `${s.character_name} (Drop All)`, value: `drop_full_BOTH_${s.id}` });
                 } else {
                     selectMenu.addOptions({ label: `${s.character_name} (${s.boss_choice.replace('PUBLIC_', '')})`, value: `drop_full_${s.boss_choice}_${s.id}` });
                 }
@@ -207,7 +200,6 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId.startsWith('choice_')) {
             if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), flags: MessageFlags.Ephemeral });
             const boss = interaction.customId.replace('choice_', '');
-            
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`queue_MAIN_${boss}`).setLabel('Main Team').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
                 new ButtonBuilder().setCustomId(`queue_LASTRESORT_${boss}`).setLabel('Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
@@ -277,7 +269,6 @@ client.on('interactionCreate', async interaction => {
             const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             let finalChoice = (qType === 'LASTRESORT') ? 'LAST_RESORT' : (isPuffin || qType !== 'MAIN' ? bossChoice : `PUBLIC_${bossChoice}`);
             
-            // Vocation mapping
             let vocAbbr = rawVoc; let vocEmoji = '❓';
             if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
@@ -288,18 +279,19 @@ client.on('interactionCreate', async interaction => {
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, `${vocEmoji} ${vocAbbr}`, charLevel, finalChoice, queenMessage);
 
-            let replyText = `${mode === 'lazy' ? `😒 **${messages.getRandom(messages.lazySnark)}**\n` : ""}✅ <@${interaction.user.id}>, **${charName}** added!\n👑 **Address:** *"${queenMessage}"*`;
+            // ✅ ROYAL HYPE LOGIC
+            let hypeLine = messages.getRandom(messages.standardHype);
+            if (charName === "Fortuna Felis") hypeLine = messages.getRandom(messages.leaderHype);
+
+            let snark = mode === 'lazy' ? `😒 **${messages.getRandom(messages.lazySnark)}**\n` : "";
+            let replyText = rawVoc.includes('MONK') ? `${snark}${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}> added!` : `${snark}✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] ${hypeLine}`;
+            replyText += `\n👑 **Address:** *"${queenMessage}"*`;
+
             await interaction.editReply({ content: replyText });
             await displayRoster(interaction.channel);
         } catch (e) { console.error(e); await interaction.editReply("⚠️ API Error."); }
     }
 });
 
-// Process clean exit
-process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing database...');
-    db.close();
-    process.exit(0);
-});
-
+process.on('SIGTERM', () => { db.close(); process.exit(0); });
 client.login(process.env.DISCORD_TOKEN);
