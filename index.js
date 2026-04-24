@@ -157,7 +157,22 @@ client.on('messageCreate', async message => {
             message.reply('🧹 **Roster wiped clean!**');
         }
 
-        // ✅ NEW: !remove [Character Name]
+        // ✅ THE WHITELIST COMMANDS
+        if (message.content.startsWith('!whitelist ')) {
+            const args = message.content.split(' ');
+            const action = args[1]; // add or remove
+            const name = args.slice(2).join(' ');
+
+            if (action === 'add') {
+                db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name);
+                message.reply(`✅ **${name}** added to Whitelist. They will now be treated as a Puffin!`);
+            } else if (action === 'remove') {
+                db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name);
+                message.reply(`🗑️ **${name}** removed from Whitelist.`);
+            }
+        }
+
+        // ✅ THE REMOVE COMMAND
         if (message.content.startsWith('!remove ')) {
             const charName = message.content.replace('!remove ', '').trim();
             const info = db.prepare('DELETE FROM signups WHERE LOWER(character_name) = LOWER(?)').run(charName);
@@ -169,7 +184,7 @@ client.on('messageCreate', async message => {
             }
         }
     } else {
-        const adminCmds = ['!open', '!close', '!clear', '!remove'];
+        const adminCmds = ['!open', '!close', '!clear', '!remove', '!whitelist'];
         if (adminCmds.some(cmd => message.content.startsWith(cmd))) {
             return message.reply("⛔ **Access Denied:** You do not have royal authority.");
         }
