@@ -219,6 +219,24 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: replyText });
 
+            // 🏷️ CHECK WHITELIST STATUS
+            const isWhitelisted = db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
+            
+            // ⏰ TIME CHECK: Find when the !open message was sent (simplified for now)
+            // If not whitelisted and button isn't "reserve", we tag them as 'PUBLIC'
+            let finalChoice = bossChoice;
+            if (!isWhitelisted && bossChoice !== 'RESERVE') {
+                // For now, we'll mark them as PUBLIC so the roster can sort them later
+                finalChoice = `PUBLIC_${bossChoice}`;
+            }
+
+            // 💾 SAVE TO DATABASE
+            const stmt = db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)');
+            stmt.run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
+
+            let replyText = `✅ **${charName}** [Lvl ${charLevel}] (${formattedVoc}) has been logged!`;
+            if (!isWhitelisted) replyText += `\n*(Note: Non-whitelisted players are queued behind Puffins for the first 48h)*`;
+
         } catch (error) {
             console.error("API Error:", error);
             await interaction.editReply("⚠️ **System Failure:** The Mecha-Puffin couldn't reach the Tibia servers.");
