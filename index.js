@@ -51,6 +51,48 @@ client.on('messageCreate', message => {
         const row = new ActionRowBuilder().addComponents(feruBtn);
         message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨\nThe Gates are OPEN! Click below to sign up.', components: [row] });
     }
+    // Command to view the roster
+    if (message.content === '!roster') {
+        // 1. Fetch ALL sign-ups from the database
+        const signups = db.prepare('SELECT character_name, vocation, boss_choice FROM signups').all();
+
+        // 2. Check if the database is empty
+        if (signups.length === 0) {
+            return message.reply("📭 **The roster is empty!** No one has braved the gates yet.");
+        }
+
+        // 3. Build a sleek Discord Embed
+        const rosterEmbed = {
+            title: "📜 Official Raid Roster",
+            description: "The Queen's chosen warriors:",
+            color: 0x0099ff, // A nice Puffin-blue color
+            fields: [],
+            footer: { text: `Total Puffins ready for battle: ${signups.length}` }
+        };
+
+        // 4. Group the players by which boss they selected
+        const bosses = ['LLK', 'HOD', 'BOTH', 'FERU'];
+        
+        bosses.forEach(boss => {
+            // Filter the database results for this specific boss
+            const players = signups.filter(p => p.boss_choice === boss);
+            
+            if (players.length > 0) {
+                // Format their names into a nice bulleted list
+                const playerList = players.map(p => `• **${p.character_name}** (${p.vocation})`).join('\n');
+                
+                // Add this group to the Embed box
+                rosterEmbed.fields.push({
+                    name: `🚨 ${boss} TEAM`,
+                    value: playerList,
+                    inline: false // Keeps each boss on its own row
+                });
+            }
+        });
+
+        // 5. Send the masterpiece to the channel
+        message.channel.send({ embeds: [rosterEmbed] });
+    }
 });
 
 // ---------------------------------------------------------
