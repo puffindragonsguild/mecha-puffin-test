@@ -25,6 +25,23 @@ async function displayRoster(target) {
     const firstSignupTime = new Date(allSignups[0].created_at || Date.now()).getTime();
     const windowExpired = (Date.now() - firstSignupTime) > fortyEightHours;
 
+    // --- CREATE BUTTONS FOR THE ROSTER MESSAGE ---
+    const row = new ActionRowBuilder();
+    // Check which bosses are represented in the current batch to show relevant buttons
+    const currentBosses = [...new Set(allSignups.map(s => s.boss_choice))];
+    
+    if (currentBosses.some(b => b.includes('LLK') || b.includes('HOD') || b.includes('BOTH'))) {
+        row.addComponents(
+            new ButtonBuilder().setCustomId('signup_llk').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
+            new ButtonBuilder().setCustomId('signup_hod').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
+            new ButtonBuilder().setCustomId('signup_both').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
+        );
+    } else if (currentBosses.some(b => b.includes('FERU'))) {
+        row.addComponents(new ButtonBuilder().setCustomId('signup_feru').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️'));
+    }
+    // Add a universal Drop Out button for convenience
+    row.addComponents(new ButtonBuilder().setCustomId('dropout_btn').setLabel('Drop Out').setStyle(ButtonStyle.Secondary).setEmoji('🏃'));
+
     const addSection = (name, emoji, key) => {
         const players = allSignups.filter(p => 
             p.boss_choice.includes(key) || (p.boss_choice.includes('BOTH') && (key === 'LLK' || key === 'HOD'))
@@ -58,10 +75,11 @@ async function displayRoster(target) {
 
     const timeLeft = Math.max(0, (fortyEightHours - (Date.now() - firstSignupTime)) / (1000 * 60 * 60));
     rosterEmbed.footer = { 
-        text: (windowExpired ? "✅ Public queue merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)}h.`) + "\n❌ Need to drop out? Type !dropout"
+        text: (windowExpired ? "✅ Public queue merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)}h.`) + "\n❌ Need to drop out? Use the button or type !dropout"
     };
 
-    return target.send({ embeds: [rosterEmbed] });
+    // Send the embed with the buttons attached
+    return target.send({ embeds: [rosterEmbed], components: row.components.length > 0 ? [row] : [] });
 }
 
 // --- HYPE LOOP TRIGGER ---
@@ -87,31 +105,47 @@ client.on('messageCreate', message => {
     if (message.content.startsWith('!dropout')) {
         const userId = message.author.id;
         const args = message.content.split(' ');
-        const targetName = args.slice(1).join(' '); // Grab the name after !dropout
+        const targetInput = args.slice(1).join(' ').toUpperCase(); // e.g., "LLK" or "HOD"
 
-        const userSignups = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all(userId);
+        const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
         
-        if (userSignups.length === 0) {
-            return message.reply("You aren't on the list, Puffin!");
+        if (userSignups.length === 0) return message.reply("You aren't on the list, Puffin!");
+
+        // If they have multiple characters and didn't specify WHICH character
+        if (userSignups.length > 1 && !targetInput.includes(' ')) {
+            const list = userSignups.map(s => `• **${s.character_name}** (${s.boss_choice})`).join('\n');
+            return message.reply(`You have multiple characters. Use \`!dropout [Character Name] [Boss]\`:\n${list}`);
         }
 
-        // If they didn't provide a name and have multiple signups
-        if (!targetName && userSignups.length > 1) {
-            const names = userSignups.map(s => `• **${s.character_name}**`).join('\n');
-            return message.reply(`You have multiple characters signed up:\n${names}\nPlease type \`!dropout [Character Name]\` to specify which one is abandoning the Queen.`);
-        }
-
-        // Determine which character to delete
-        const charToDelete = targetName || userSignups[0].character_name;
-
-        const info = db.prepare('DELETE FROM signups WHERE discord_user_id = ? AND LOWER(character_name) = LOWER(?)').run(userId, charToDelete);
+        // Find the specific record
+        const signup = userSignups.find(s => targetInput.includes(s.character_name.toUpperCase()) || userSignups.length === 1);
         
-        if (info.changes > 0) {
-            message.channel.send(`🏃💨 **ABANDONMENT:** **${charToDelete}** has fled the raid. Cowardice noted!`);
-            displayRoster(message.channel);
+        if (!signup) return message.reply("I couldn't find that character under your name.");
+
+        let finalMsg = "";
+        const choice = signup.boss_choice;
+
+        // --- THE BOTH-SPLITTING LOGIC ---
+        if (choice === 'BOTH' || choice.startsWith('PUBLIC_BOTH')) {
+            if (targetInput.includes('LLK')) {
+                const newChoice = choice.includes('PUBLIC') ? 'PUBLIC_HOD' : 'HOD';
+                db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signup.id);
+                finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped LLK but is still in for HoD!`;
+            } else if (targetInput.includes('HOD')) {
+                const newChoice = choice.includes('PUBLIC') ? 'PUBLIC_LLK' : 'LLK';
+                db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, signup.id);
+                finalMsg = `🏃💨 **PARTIAL RETREAT:** **${signup.character_name}** dropped HoD but is still in for LLK!`;
+            } else {
+                return message.reply("You are signed up for **BOTH**. Please type `!dropout [Name] LLK` or `!dropout [Name] HOD` to drop just one.");
+            }
         } else {
-            message.reply(`I couldn't find a character named **${charToDelete}** under your ID.`);
+            // Standard full dropout
+            db.prepare('DELETE FROM signups WHERE id = ?').run(signup.id);
+            finalMsg = `🏃💨 **ABANDONMENT:** **${signup.character_name}** has fled the raid entirely!`;
         }
+
+        message.channel.send(finalMsg);
+        displayRoster(message.channel);
     }
 
     if (message.content === '!open dt') {
@@ -171,17 +205,58 @@ client.on('messageCreate', message => {
 // 2. LISTENING FOR BUTTON CLICKS & FORMS
 // ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
+    
+    // --- 1. HANDLE ALL BUTTON CLICKS ---
     if (interaction.isButton()) {
+        // First, check the Coward's Button (Drop Out)
+        if (interaction.customId === 'dropout_btn') {
+            const userId = interaction.user.id;
+            const userSignups = db.prepare('SELECT character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
+
+            if (userSignups.length === 0) return interaction.reply({ content: "You aren't on the list, Puffin!", ephemeral: true });
+
+            // If they only have one signup, and it's not a 'BOTH' signup, we can drop them instantly
+            if (userSignups.length === 1 && !userSignups[0].boss_choice.includes('BOTH')) {
+                db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(userId);
+                await interaction.reply({ content: `🏃💨 **${userSignups[0].character_name}** has dropped out. Cowardice noted!` });
+                return displayRoster(interaction.channel);
+            }
+
+            // If they have multiples or a BOTH signup, they need to use the chat command for safety
+            return interaction.reply({ 
+                content: "You have multiple characters or a 'BOTH' signup. To ensure I don't remove the wrong thing, please use: `!dropout [Name] [Boss]` in chat!", 
+                ephemeral: true 
+            });
+        }
+
+        // Otherwise, it's a signup button (LLK, HoD, etc.)
         if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
 
-        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('Mecha-Puffin Registration');
-        const charNameInput = new TextInputBuilder().setCustomId('charName').setLabel("Exact character name?").setStyle(TextInputStyle.Short).setRequired(true);
-        const queenMessageInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Message for the Queen?").setStyle(TextInputStyle.Paragraph).setRequired(false);
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_${interaction.customId}`)
+            .setTitle('Mecha-Puffin Registration');
+
+        const charNameInput = new TextInputBuilder()
+            .setCustomId('charName')
+            .setLabel("Exact character name?")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        const queenMessageInput = new TextInputBuilder()
+            .setCustomId('queenMessage')
+            .setLabel("Message for the Queen?")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(false);
         
-        modal.addComponents(new ActionRowBuilder().addComponents(charNameInput), new ActionRowBuilder().addComponents(queenMessageInput));
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(charNameInput), 
+            new ActionRowBuilder().addComponents(queenMessageInput)
+        );
+
         await interaction.showModal(modal);
     }
 
+    // --- 2. HANDLE MODAL SUBMISSIONS (The Sign-up Form) ---
     if (interaction.isModalSubmit()) {
         const rawName = interaction.fields.getTextInputValue('charName');
         const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
@@ -255,4 +330,5 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+// Final Login
 client.login(process.env.DISCORD_TOKEN);
