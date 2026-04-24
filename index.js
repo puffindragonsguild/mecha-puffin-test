@@ -37,7 +37,7 @@ async function displayRoster(target) {
             const mainTeam = mainList.slice(0, maxPlayers);
             const mainReserves = mainList.slice(maxPlayers);
 
-            const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+            const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
             rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
 
             if (mainReserves.length > 0) {
@@ -84,29 +84,33 @@ client.on('messageCreate', message => {
 
     if (message.content === '!roster') displayRoster(message.channel);
 
-    if (message.content === '!dropout') {
+    if (message.content.startsWith('!dropout')) {
         const userId = message.author.id;
-        console.log(`[DEBUG] Dropout attempt by Discord ID: ${userId}`);
+        const args = message.content.split(' ');
+        const targetName = args.slice(1).join(' '); // Grab the name after !dropout
 
-        // 1. Check if the user exists in the database
         const userSignups = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all(userId);
         
         if (userSignups.length === 0) {
-            console.log(`[DEBUG] No signups found for ID: ${userId}`);
-            return message.reply("You aren't on the list, Puffin! You can't abandon a raid you haven't joined.");
+            return message.reply("You aren't on the list, Puffin!");
         }
 
-        // 2. Perform the deletion
-        const info = db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(userId);
+        // If they didn't provide a name and have multiple signups
+        if (!targetName && userSignups.length > 1) {
+            const names = userSignups.map(s => `• **${s.character_name}**`).join('\n');
+            return message.reply(`You have multiple characters signed up:\n${names}\nPlease type \`!dropout [Character Name]\` to specify which one is abandoning the Queen.`);
+        }
+
+        // Determine which character to delete
+        const charToDelete = targetName || userSignups[0].character_name;
+
+        const info = db.prepare('DELETE FROM signups WHERE discord_user_id = ? AND LOWER(character_name) = LOWER(?)').run(userId, charToDelete);
         
         if (info.changes > 0) {
-            const names = userSignups.map(s => s.character_name).join(', ');
-            message.channel.send(`🏃💨 **THE COWARD'S EXIT:** **${names}** has dropped out of the raid. The queue has moved up!`);
-            
-            // Refresh the roster so everyone sees the new line-up
+            message.channel.send(`🏃💨 **ABANDONMENT:** **${charToDelete}** has fled the raid. Cowardice noted!`);
             displayRoster(message.channel);
         } else {
-            message.reply("Something went wrong with the database. The Mecha-Puffin refuses to let you go!");
+            message.reply(`I couldn't find a character named **${charToDelete}** under your ID.`);
         }
     }
 
@@ -207,6 +211,26 @@ client.on('interactionCreate', async interaction => {
             if (!isPuffin && bossChoice !== 'RESERVE') {
                 finalChoice = `PUBLIC_${bossChoice}`;
                 note = `\n*(Note: You are in the public queue for 48h)*`;
+
+            // 🛡️ FAILSAFE: Check if character is already signed up
+            const existing = db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
+            if (existing) {
+                return interaction.editReply(`❌ **Error:** **${charName}** is already on the roster! Double-signing is forbidden.`);
+            }
+
+            // 💾 SAVE (with Discord User ID)
+            db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
+              .run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
+
+            // 📣 MENTION: Using <@ID> to ping the user
+            let replyText = `✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
+            
+            if (queenMessage.trim() !== "") replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
+
+            await interaction.editReply({ content: replyText });
+            await displayRoster(interaction.channel);
+
+        } catch (error) { ... }    
             }
 
             let vocAbbr = rawVocation; let vocEmoji = '❓';
