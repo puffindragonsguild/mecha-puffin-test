@@ -50,28 +50,33 @@ async function displayRoster(target) {
         );
 
         if (players.length > 0) {
-            let mainList = windowExpired ? players.filter(p => p.boss_choice !== 'LAST_RESORT') : players.filter(p => !p.boss_choice.startsWith('PUBLIC_') && p.boss_choice !== 'LAST_RESORT');
-            let publicQueue = windowExpired ? [] : players.filter(p => p.boss_choice.startsWith('PUBLIC_'));
+            // 1. Filter the lists
             let lastResorts = players.filter(p => p.boss_choice === 'LAST_RESORT');
+            let others = players.filter(p => p.boss_choice !== 'LAST_RESORT');
+
+            let mainList = windowExpired ? others : others.filter(p => !p.boss_choice.startsWith('PUBLIC_'));
+            let publicQueue = windowExpired ? [] : others.filter(p => p.boss_choice.startsWith('PUBLIC_'));
 
             const mainTeam = mainList.slice(0, maxPlayers);
-            const mainReserves = mainList.slice(maxPlayers);
+            const puffinReserves = mainList.slice(maxPlayers);
 
+            // 2. Format and add sections to Embed
             const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
             rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
 
-            if (mainReserves.length > 0) {
-                const resText = mainReserves.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+            if (puffinReserves.length > 0) {
+                const resText = puffinReserves.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
                 rosterEmbed.fields.push({ name: `⏳ ${name} PUFFIN RESERVES`, value: resText, inline: false });
             }
 
             if (publicQueue.length > 0) {
                 const publicText = publicQueue.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
-                rosterEmbed.fields.push({ name: `📢 ${name} PUBLIC QUEUE (Waitlisted)`, value: publicText, inline: false });
+                rosterEmbed.fields.push({ name: `📢 ${name} PUBLIC QUEUE (Waitlist)`, value: publicText, inline: false });
             }
 
+            // NEW: The Last Resort section at the very bottom
             if (lastResorts.length > 0) {
-                const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
                 rosterEmbed.fields.push({ name: `🆘 ${name} LAST RESORT RESERVES`, value: lastText, inline: false });
             }
         }
