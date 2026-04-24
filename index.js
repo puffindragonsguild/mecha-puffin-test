@@ -193,6 +193,32 @@ client.on('interactionCreate', async interaction => {
             const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
             const data = await response.json();
 
+            if (!data.character?.character?.name) // ---------------------------------------------------------
+// 2. LISTENING FOR BUTTON CLICKS & FORMS
+// ---------------------------------------------------------
+client.on('interactionCreate', async interaction => {
+    if (interaction.isButton()) {
+        if (!gatesOpen) return interaction.reply({ content: messages.getRandom(messages.closedGates), ephemeral: true });
+
+        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('Mecha-Puffin Registration');
+        const charNameInput = new TextInputBuilder().setCustomId('charName').setLabel("Exact character name?").setStyle(TextInputStyle.Short).setRequired(true);
+        const queenMessageInput = new TextInputBuilder().setCustomId('queenMessage').setLabel("Message for the Queen?").setStyle(TextInputStyle.Paragraph).setRequired(false);
+        
+        modal.addComponents(new ActionRowBuilder().addComponents(charNameInput), new ActionRowBuilder().addComponents(queenMessageInput));
+        await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit()) {
+        const rawName = interaction.fields.getTextInputValue('charName');
+        const queenMessage = interaction.fields.getTextInputValue('queenMessage') || "";
+        const bossChoice = interaction.customId.replace('modal_signup_', '').toUpperCase();
+
+        await interaction.deferReply(); 
+
+        try {
+            const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
+            const data = await response.json();
+
             if (!data.character?.character?.name) return interaction.editReply(`❌ Character **${rawName}** not found.`);
 
             const char = data.character.character;
@@ -203,6 +229,13 @@ client.on('interactionCreate', async interaction => {
 
             if (rawVocation === 'NONE') return interaction.editReply(`❌ Rookgaardian detected.`);
 
+            // 🛡️ FAILSAFE: Check if character is already signed up
+            const existing = db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
+            if (existing) {
+                return interaction.editReply(`❌ **Error:** **${charName}** is already on the roster! Double-signing is forbidden.`);
+            }
+
+            // 🏷️ GATEKEEPER LOGIC
             const manualWhitelist = db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             const isPuffin = (guildName === "Puffin Dragons") || manualWhitelist;
             
@@ -211,28 +244,9 @@ client.on('interactionCreate', async interaction => {
             if (!isPuffin && bossChoice !== 'RESERVE') {
                 finalChoice = `PUBLIC_${bossChoice}`;
                 note = `\n*(Note: You are in the public queue for 48h)*`;
-
-            // 🛡️ FAILSAFE: Check if character is already signed up
-            const existing = db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
-            if (existing) {
-                return interaction.editReply(`❌ **Error:** **${charName}** is already on the roster! Double-signing is forbidden.`);
             }
 
-            // 💾 SAVE (with Discord User ID)
-            db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
-              .run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
-
-            // 📣 MENTION: Using <@ID> to ping the user
-            let replyText = `✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
-            
-            if (queenMessage.trim() !== "") replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
-
-            await interaction.editReply({ content: replyText });
-            await displayRoster(interaction.channel);
-
-        } catch (error) { ... }    
-            }
-
+            // 🎨 VOCATION MAPPING
             let vocAbbr = rawVocation; let vocEmoji = '❓';
             if (rawVocation.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
             else if (rawVocation.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
@@ -241,20 +255,28 @@ client.on('interactionCreate', async interaction => {
             else if (rawVocation.includes('MONK')) { vocAbbr = 'MK'; vocEmoji = '🥋'; }
             const formattedVoc = `${vocEmoji} ${vocAbbr}`;
 
+            // 💾 SINGLE SAVE TO DATABASE
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, formattedVoc, charLevel, finalChoice, queenMessage);
 
-            let replyText = rawVocation.includes('MONK') ? `${messages.getRandom(messages.monkRoasts)}\n✅ **${charName}** added!${note}` : `✅ **${charName}** ${messages.getRandom(messages.standardHype)}!${note}`;
+            // 📣 COMPOSE REPLY
+            let replyText = "";
+            if (rawVocation.includes('MONK')) {
+                replyText = `${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}>, **${charName}** added!${note}`;
+            } else {
+                replyText = `✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] (${formattedVoc}) ${messages.getRandom(messages.standardHype)}!${note}`;
+            }
+
             if (queenMessage.trim() !== "") replyText += `\n👑 **Message to the Queen:**\n> *"${queenMessage}"*`;
 
             await interaction.editReply({ content: replyText });
             
-            // --- STEP 3: AUTOMATIC ROSTER UPDATE ---
+            // 📜 UPDATE ROSTER
             await displayRoster(interaction.channel);
 
         } catch (error) {
-            console.error(error);
-            await interaction.editReply("⚠️ API error.");
+            console.error("Signup Error:", error);
+            await interaction.editReply("⚠️ The Mecha-Puffin encountered an error reaching Tibia servers.");
         }
     }
 });
