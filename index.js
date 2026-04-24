@@ -16,7 +16,7 @@ let gatesOpen = false;
 let hypeInterval; 
 
 client.once('clientReady', () => {
-    console.log('🤖 Mecha-Puffin Engine is ONLINE!');
+    console.log('🤖 PuffinBot Engine is ONLINE!');
 });
 
 // --- REUSABLE ROSTER FUNCTION ---
