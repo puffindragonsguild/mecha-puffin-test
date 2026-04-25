@@ -173,7 +173,7 @@ client.on('messageCreate', async message => {
             gatesOpen = true;
             const raidDate = getNextWednesday();
             const embed = {
-                title: "🧙‍♂️ FERUMBRAS RAID 🧙‍♂️",
+                title: "🧙‍♂️ FERUMBRAS 🧙‍♂️",
                 color: 0x9b59b6, // Purple
                 description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nSlay the Mortal Shell of Ferumbras!`,
                 fields: [
