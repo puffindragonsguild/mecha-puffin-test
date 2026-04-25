@@ -148,11 +148,11 @@ client.on('messageCreate', async message => {
 
         if (message.content === '!open dt') {
             gatesOpen = true;
-            const raidDate = getNextWednesday(); // ✅ Now defined for this block too
+            const raidDate = getNextWednesday(); 
             const dtEmbed = {
                 title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
                 color: 0xff0000, // Bright Red
-                description: "📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell./n/nBring your A-Game and don't watch Chelsea if you're a paladin.",
+                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.\n\nBring your A-Game and don't watch Chelsea if you're a paladin.`,
                 fields: [
                     { 
                         name: "🛡️ Priority Window", 
@@ -162,7 +162,8 @@ client.on('messageCreate', async message => {
                         name: "⚔️ Bosses", 
                         value: "We are running **Both** LLK and HoD back-to-back." 
                     }
-                ],
+                ]
+            }; // ✅ Added missing closing brace
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
@@ -170,7 +171,8 @@ client.on('messageCreate', async message => {
                 new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
             );
 
-            message.channel.send({ embeds: [embed], components: [row] });
+            // ✅ Changed 'embed' to 'dtEmbed' to match your variable
+            message.channel.send({ embeds: [dtEmbed], components: [row] });
             startHypeLoop(message, 'Double Trouble');
         }
 
@@ -186,6 +188,14 @@ client.on('messageCreate', async message => {
                 ],
                 footer: { text: "Long live the Queen! 👑" }
             };
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
+            );
+
+            message.channel.send({ embeds: [embed], components: [row] });
+            startHypeLoop(message, 'Ferumbras');
+        }
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
