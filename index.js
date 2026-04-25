@@ -129,7 +129,7 @@ client.on('messageCreate', async message => {
             const announceEmbed = {
                 title: "📜 ANNOUNCEMENT: THE QUEEN'S LITTLE DEVICE HAS ARRIVED!",
                 color: 0xffd700, 
-                description: "###  Hear ye! Hear ye!\n\nBy decree of the Glorious Leader, **Fortuna Felis**, the PuffinBot is now officially online! 🤖⚔️\n\nOur Boss Finals sign-up system has been upgraded! A small, diligent mechanism now sits beside the throne, keeping the register. Whether you seek the top Puffin Boss Team or offer your strength as a Reserve, the Queen’s little mechanism is active. Do try to behave!",
+                description: "###  Hear ye! Hear ye!\n\nBy decree of the Glorious Leader, **Fortuna Felis**, the PuffinBot is now officially online! 🤖⚔️\n\nOur Boss Finals sign-up system has been upgraded! A small, diligent mechanism now sits beside the throne, keeping the register. Whether you seek the top Puffin Boss Team or offer your strength as a Reserve, the Queen’s little mechanism is active. Do try to behave!\n",
                 fields: [
                     { name: "🛡️ How to Join", value: "Click the boss buttons below to register. You will be asked for your status and a personal and suitably Puffin-like message for our Queen!" },
                     { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option message, but be warned the Queen may not approve!" },
@@ -147,7 +147,7 @@ client.on('messageCreate', async message => {
             const dtEmbed = {
                 title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
                 color: 0xff0000, 
-                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.\n\nBring your A-Game and don't watch Chelsea if you're a paladin.`,
+                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.\n\nBring your **5** HoD charges, your A-Game and don't watch Chelsea if you're a paladin.\n`,
                 fields: [
                     { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist." },
                     { name: "⚔️ Bosses", value: "We are running **Both** LLK and HoD back-to-back." }
