@@ -127,15 +127,15 @@ client.on('messageCreate', async message => {
     if (isAdmin) {
         if (message.content === '!announce') {
             const announceEmbed = {
-                title: "📜 ROYAL PROCLAMATION: THE HAND OF THE QUEEN HAS ARRIVED!",
+                title: "📜 ANNOUNCEMENT: THE QUEEN'S LITTLE DEVICE HAS ARRIVED!",
                 color: 0xffd700, 
-                description: "### Hear ye! Hear ye!\n\nBy decree of her majesty, **Fortuna Felis**, the PuffinBot is now online! 🤖⚔️\n\nOur raid sign-up system has been upgraded. Whether you seek the Main Team or offer strength as a Last Resort, the Queen's ledger is ready to record your name.",
+                description: "###  Hear ye! Hear ye!\n\nBy decree of the Glorious Leader, **Fortuna Felis**, the PuffinBot is now officially online! 🤖⚔️\n\nOur Boss Finals sign-up system has been upgraded! A small, diligent mechanism now sits beside the throne, keeping the register. Whether you seek the top Puffin Boss Team or offer your strength as a Reserve, the Queen’s little mechanism is active. Do try to behave!",
                 fields: [
-                    { name: "🛡️ How to Join", value: "Click the boss buttons below to start. You will be asked for your status and a message for the Queen." },
+                    { name: "🛡️ How to Join", value: "Click the boss buttons below to register. You will be asked for your status and a personal and suitably Puffin-like message for our Queen!" },
                     { name: "😴 Lazy Option", value: "Feeling uninspired? Use the Lazy Option message, but be warned the Queen may not approve!" },
                     { name: "🏃 Dropping Out", value: "Should cowardice take hold, use the 'Drop Out' button or type `!dropout`." }
                 ],
-                footer: { text: "👑 Long live the Queen! | Powered by PuffinBot" }
+                footer: { text: "👑 Hail Pufffin Dragons! Long live the Queen! | Powered by PuffinBot" }
             };
             await message.channel.send({ embeds: [announceEmbed] });
             message.delete().catch(() => {});
@@ -151,7 +151,8 @@ client.on('messageCreate', async message => {
                 fields: [
                     { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist." },
                     { name: "⚔️ Bosses", value: "We are running **Both** LLK and HoD back-to-back." }
-                ]
+                ],
+                footer: { text: "Hail Puffin Dragons! | Powered by PuffinBot" }
             };
 
             const row = new ActionRowBuilder().addComponents(
@@ -174,7 +175,7 @@ client.on('messageCreate', async message => {
                 fields: [
                     { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist.", inline: true }
                 ],
-                footer: { text: "Long live the Queen! 👑" }
+                footer: { text: "👑 Hail the Queen at the lever! | Powered by PuffinBot" }
             };
 
             const row = new ActionRowBuilder().addComponents(
