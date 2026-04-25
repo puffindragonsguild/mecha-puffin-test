@@ -18,18 +18,13 @@ let hypeInterval;
 client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
 });
+
 // --- DATE FUNCTION --- //
 function getNextWednesday() {
     const today = new Date();
     const nextWed = new Date();
-    
-    // Calculate days until Wednesday (3). 
-    // If today is Wednesday, this will give you the one in 7 days.
     const daysUntilWed = (3 - today.getDay() + 7) % 7 || 7;
-    
     nextWed.setDate(today.getDate() + daysUntilWed);
-    
-    // Formats it to a readable string like "30 April"
     return nextWed.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }
 
@@ -151,19 +146,13 @@ client.on('messageCreate', async message => {
             const raidDate = getNextWednesday(); 
             const dtEmbed = {
                 title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
-                color: 0xff0000, // Bright Red
+                color: 0xff0000, 
                 description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.\n\nBring your A-Game and don't watch Chelsea if you're a paladin.`,
                 fields: [
-                    { 
-                        name: "🛡️ Priority Window", 
-                        value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist." 
-                    },
-                    { 
-                        name: "⚔️ Bosses", 
-                        value: "We are running **Both** LLK and HoD back-to-back." 
-                    }
+                    { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist." },
+                    { name: "⚔️ Bosses", value: "We are running **Both** LLK and HoD back-to-back." }
                 ]
-            }; // ✅ Added missing closing brace
+            };
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
@@ -171,7 +160,6 @@ client.on('messageCreate', async message => {
                 new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
             );
 
-            // ✅ Changed 'embed' to 'dtEmbed' to match your variable
             message.channel.send({ embeds: [dtEmbed], components: [row] });
             startHypeLoop(message, 'Double Trouble');
         }
@@ -179,9 +167,9 @@ client.on('messageCreate', async message => {
         if (message.content === '!open feru') {
             gatesOpen = true;
             const raidDate = getNextWednesday();
-            const embed = {
+            const feruEmbed = {
                 title: "🧙‍♂️ FERUMBRAS 🧙‍♂️",
-                color: 0x9b59b6, // Purple
+                color: 0x9b59b6, 
                 description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome raid the hellish lair with us to slay the Mortal Shell of Ferumbras and snatch the hat off his head or the scroll that Dennis insists exists. Bring your diving helmet and your A-Game.`,
                 fields: [
                     { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist.", inline: true }
@@ -193,17 +181,10 @@ client.on('messageCreate', async message => {
                 new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
             );
 
-            message.channel.send({ embeds: [embed], components: [row] });
+            message.channel.send({ embeds: [feruEmbed], components: [row] });
             startHypeLoop(message, 'Ferumbras');
         }
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
-            );
-
-            message.channel.send({ embeds: [embed], components: [row] });
-            startHypeLoop(message, 'Ferumbras');
-        }
         if (message.content === '!open reserves') {
             gatesOpen = true;
             const row = new ActionRowBuilder().addComponents(
