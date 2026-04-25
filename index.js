@@ -152,7 +152,7 @@ client.on('messageCreate', async message => {
             const dtEmbed = {
                 title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
                 color: 0xff0000, // Bright Red
-                description: "📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.",
+                description: "📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell./n/nBring your A-Game and don't watch Chelsea if you're a paladin.",
                 fields: [
                     { 
                         name: "🛡️ Priority Window", 
@@ -180,7 +180,7 @@ client.on('messageCreate', async message => {
             const embed = {
                 title: "🧙‍♂️ FERUMBRAS 🧙‍♂️",
                 color: 0x9b59b6, // Purple
-                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome raid the hellish lair with us to slay the Mortal Shell of Ferumbras and snatch the hat off his head.`,
+                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome raid the hellish lair with us to slay the Mortal Shell of Ferumbras and snatch the hat off his head or the scroll that Dennis insists exists. Bring your diving helmet and your A-Game.`,
                 fields: [
                     { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist.", inline: true }
                 ],
