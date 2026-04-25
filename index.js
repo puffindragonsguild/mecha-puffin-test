@@ -148,16 +148,21 @@ client.on('messageCreate', async message => {
 
         if (message.content === '!open dt') {
             gatesOpen = true;
-            const embed = {
+            const raidDate = getNextWednesday(); // ✅ Now defined for this block too
+            const dtEmbed = {
                 title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
                 color: 0xff0000, // Bright Red
                 description: "📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.",
                 fields: [
-                    { name: "⚔️ LLK & HoD", value: "Both bosses are active. Sign up now!", inline: true },
-                    { name: "🛡️ Priority", value: "Puffins first for 48h.", inline: true }
+                    { 
+                        name: "🛡️ Priority Window", 
+                        value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist." 
+                    },
+                    { 
+                        name: "⚔️ Bosses", 
+                        value: "We are running **Both** LLK and HoD back-to-back." 
+                    }
                 ],
-                footer: { text: "Hail the Queen at the Lever! 👑" }
-            };
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
@@ -175,9 +180,9 @@ client.on('messageCreate', async message => {
             const embed = {
                 title: "🧙‍♂️ FERUMBRAS 🧙‍♂️",
                 color: 0x9b59b6, // Purple
-                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nSlay the Mortal Shell of Ferumbras!`,
+                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome raid the hellish lair with us to slay the Mortal Shell of Ferumbras and snatch the hat off his head.`,
                 fields: [
-                    { name: "🛡️ Rules", value: "48h Puffin Priority", inline: true }
+                    { name: "🛡️ Priority Window", value: "Puffins have priority for the first 48 hours. Others will join the Public Waitlist.", inline: true }
                 ],
                 footer: { text: "Long live the Queen! 👑" }
             };
