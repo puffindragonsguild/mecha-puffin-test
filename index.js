@@ -213,7 +213,7 @@ client.on('messageCreate', async message => {
                 message.reply(`✅ **${name}** added to Whitelist.`);
             } else if (action === 'remove') {
                 db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name);
-                message.reply(`🗑️ **${name}** removed.`);
+                message.reply(`🗑️ **${name}** removed from whitelist.`);
             }
         }
 
@@ -221,10 +221,10 @@ client.on('messageCreate', async message => {
             const charName = message.content.replace('!remove ', '').trim();
             const info = db.prepare('DELETE FROM signups WHERE LOWER(character_name) = LOWER(?)').run(charName);
             if (info.changes > 0) {
-                message.reply(`🗑️ **Purged:** **${charName}** has been removed.`);
+                message.reply(`🗑️ Purged: ${charName} has been removed.`);
                 displayRoster(message.channel);
             } else {
-                message.reply(`❓ Character **${charName}** not found.`);
+                message.reply(`The Queen does not acknowledge your existence.❓ Character ${charName} not found.`);
             }
         }
     }
@@ -306,7 +306,7 @@ client.on('interactionCreate', async interaction => {
         let queenMessage = mode === 'manual' ? interaction.fields.getTextInputValue('queenMessage') : messages.getRandom(messages.lazyQueenMessages);
 
         if (mode === 'manual' && (!queenMessage || queenMessage.trim() === "")) {
-            return interaction.reply({ content: "❌ Message required for Manual mode.", flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: "❌ Absolutely not! Address the Queen properly!", flags: MessageFlags.Ephemeral });
         }
 
         await interaction.deferReply();
@@ -338,7 +338,7 @@ client.on('interactionCreate', async interaction => {
 
             let snark = mode === 'lazy' ? `😒 **${messages.getRandom(messages.lazySnark)}**\n` : "";
             let replyText = rawVoc.includes('MONK') ? `${snark}${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}> added!` : `${snark}✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] ${hypeLine}`;
-            replyText += `\n👑 **Address:** *"${queenMessage}"*`;
+            replyText += `\n👑 **Message to the court:** *"${queenMessage}"*`;
 
             await interaction.editReply({ content: replyText });
             await displayRoster(interaction.channel);
