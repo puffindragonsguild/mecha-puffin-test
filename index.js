@@ -18,6 +18,20 @@ let hypeInterval;
 client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
 });
+// --- DATE FUNCTION --- //
+function getNextWednesday() {
+    const today = new Date();
+    const nextWed = new Date();
+    
+    // Calculate days until Wednesday (3). 
+    // If today is Wednesday, this will give you the one in 7 days.
+    const daysUntilWed = (3 - today.getDay() + 7) % 7 || 7;
+    
+    nextWed.setDate(today.getDate() + daysUntilWed);
+    
+    // Formats it to a readable string like "30 April"
+    return nextWed.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+}
 
 // --- REUSABLE ROSTER FUNCTION ---
 async function displayRoster(target) {
@@ -145,10 +159,17 @@ client.on('messageCreate', async message => {
 
         if (message.content === '!open feru') {
             gatesOpen = true;
+            const raidDate = getNextWednesday(); // Pulls the upcoming Wednesday date
+            
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
             );
-            message.channel.send({ content: '🚨 **FERUMBRAS RAID POSTED** 🚨', components: [row] });
+
+            message.channel.send({ 
+                content: `🚨 **FERUMBRAS RAID POSTED** 🚨\n\n📅 **Wednesday ${raidDate}** at **22:00 CEST (21:00 BST)**\n\nCome raid the hellish lair with us to slay the Mortal Shell of Ferumbras.\n\nPuffins have priority for the first 48 hours. Puffin friends that sign up will be put in the public waitlist.\n\nPress the Button below to start your sign-up.`, 
+                components: [row] 
+            });
+            
             startHypeLoop(message, 'Ferumbras');
         }
 
