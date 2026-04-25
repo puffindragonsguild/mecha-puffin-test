@@ -148,31 +148,47 @@ client.on('messageCreate', async message => {
 
         if (message.content === '!open dt') {
             gatesOpen = true;
+            const embed = {
+                title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
+                color: 0xff0000, // Bright Red
+                description: "📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nCome and claim your space to have fun with the guild and for a chance for treasure including the elusive undevoured egg or a key that is impossible to sell.",
+                fields: [
+                    { name: "⚔️ LLK & HoD", value: "Both bosses are active. Sign up now!", inline: true },
+                    { name: "🛡️ Priority", value: "Puffins first for 48h.", inline: true }
+                ],
+                footer: { text: "Hail the Queen at the Lever! 👑" }
+            };
+
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
                 new ButtonBuilder().setCustomId('choice_HOD').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
                 new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
             );
-            message.channel.send({ content: '🚨 **DOUBLE TROUBLE POSTED** 🚨', components: [row] });
+
+            message.channel.send({ embeds: [embed], components: [row] });
             startHypeLoop(message, 'Double Trouble');
         }
 
         if (message.content === '!open feru') {
             gatesOpen = true;
-            const raidDate = getNextWednesday(); // Pulls the upcoming Wednesday date
-            
+            const raidDate = getNextWednesday();
+            const embed = {
+                title: "🧙‍♂️ FERUMBRAS RAID 🧙‍♂️",
+                color: 0x9b59b6, // Purple
+                description: `📅 **Wednesday ${raidDate}** at **22:00 CEST**\n\nSlay the Mortal Shell of Ferumbras!`,
+                fields: [
+                    { name: "🛡️ Rules", value: "48h Puffin Priority", inline: true }
+                ],
+                footer: { text: "Long live the Queen! 👑" }
+            };
+
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
             );
 
-            message.channel.send({ 
-                content: `🚨 **FERUMBRAS RAID POSTED** 🚨\n\n📅 **Wednesday ${raidDate}** at **22:00 CEST (21:00 BST)**\n\nCome raid the hellish lair with us to slay the Mortal Shell of Ferumbras.\n\nPuffins have priority for the first 48 hours. Puffin friends that sign up will be put in the public waitlist.\n\nPress the Button below to start your sign-up.`, 
-                components: [row] 
-            });
-            
+            message.channel.send({ embeds: [embed], components: [row] });
             startHypeLoop(message, 'Ferumbras');
         }
-
         if (message.content === '!open reserves') {
             gatesOpen = true;
             const row = new ActionRowBuilder().addComponents(
