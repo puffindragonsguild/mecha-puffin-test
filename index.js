@@ -14,7 +14,7 @@ const client = new Client({
 
 let gatesOpen = false;
 let hypeInterval;
-let lastRosterMessage = null; // ✅ Keeps track of the message to delete
+let lastRosterMessage = null; 
 
 client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
@@ -34,7 +34,6 @@ async function displayRoster(target) {
     const allSignups = db.prepare('SELECT * FROM signups ORDER BY id ASC').all();
     if (allSignups.length === 0) return;
 
-    // ✅ DELETE PREVIOUS ROSTER TO REDUCE SPAM
     if (lastRosterMessage) {
         try { await lastRosterMessage.delete(); } catch (e) { console.error("Could not delete old roster"); }
     }
@@ -78,7 +77,6 @@ async function displayRoster(target) {
             const mainTeam = mainList.slice(0, maxPlayers);
             const puffinReserves = mainList.slice(maxPlayers);
 
-            // ✅ REMOVED DISCORD ID TAG FROM LIST
             const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
             rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
 
@@ -93,7 +91,6 @@ async function displayRoster(target) {
             }
 
             if (lastResorts.length > 0) {
-                // ✅ REMOVED DISCORD ID TAG FROM LIST
                 const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
                 rosterEmbed.fields.push({ name: `🆘 ${name} LAST RESORT RESERVES`, value: lastText, inline: false });
             }
@@ -108,18 +105,17 @@ async function displayRoster(target) {
         text: (windowExpired ? "✅ Public queue merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)}h.`) + "\n❌ Type !dropout to flee"
     };
 
-    // ✅ SAVE THE NEW MESSAGE
     lastRosterMessage = await target.send({ embeds: [rosterEmbed], components: row.components.length > 0 ? [row] : [] });
 }
 
 // --- HYPE LOOP ---
 const startHypeLoop = (message, raidType) => {
     if (hypeInterval) clearInterval(hypeInterval);
-    hypeInterval = setInterval(() => {
+    hypeInterval = setInterval(() => { // ✅ Edited to 48 hours[cite: 1]
         if (!gatesOpen) return clearInterval(hypeInterval);
         message.channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nStill need Puffins for **${raidType}**!`);
         displayRoster(message.channel);
-    }, 24 * 60 * 60 * 1000); 
+    }, 48 * 60 * 60 * 1000); 
 };
 
 // ---------------------------------------------------------
@@ -340,6 +336,9 @@ client.on('interactionCreate', async interaction => {
             else if (rawVoc.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
             else if (rawVoc.includes('MONK')) { vocAbbr = 'EM'; vocEmoji = '🥋'; }
 
+            // ✅ CHANGE FOR FORTUNA FELIS[cite: 1]
+            if (charName === "Fortuna Felis") { vocEmoji = '👑'; }
+
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
               .run(interaction.user.id, charName, `${vocEmoji} ${vocAbbr}`, charLevel, finalChoice, queenMessage);
 
@@ -351,7 +350,7 @@ client.on('interactionCreate', async interaction => {
             replyText += `\n👑 **Message to the court:** *"${queenMessage}"*`;
 
             await interaction.editReply({ content: replyText });
-            await displayRoster(interaction.channel);
+            // ✅ ROSTER NO LONGER SENT AUTOMATICALLY HERE[cite: 1]
         } catch (e) { console.error(e); await interaction.editReply("⚠️ API Error."); }
     }
 });
